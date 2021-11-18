@@ -6,26 +6,12 @@
 #include <iomanip>
 
 #define MEMORY_SIZE (1 << (10+6))
-#define IO_ONLY 5
-#define ADDR_A 5
-#define ADDR_B 30
-#define ADDR_C 55
-#define LOOPS 10
-#define CLK_HALF_PERIOD 3.333
-#define CLK_PERIOD 6.666
-#define MATRIX_DEFAULT_SIZE 5
-#define CACHE_SIZE 100
-
-// opcode
-#define R 0 // read
-#define W 1 // write
-#define C 2 // calculate
-#define I 3 // idle
-#define NONE 4
+#define DATA_LEN 32 // datalenth is 32 bit, 4 byte
+#define BUS_CAP 10 // bus is able to take 10 nodes
+#define CLK_HALF_PERIOD 500
+#define CLK_PERIOD 1000 // clock at 1 MHz
 
 //#include "header file"
-
-using namespace std;
 
 unsigned int memory[MEMORY_SIZE];
 int cache_size = MATRIX_DEFAULT_SIZE*MATRIX_DEFAULT_SIZE;
@@ -33,9 +19,6 @@ int matrix_size = MATRIX_DEFAULT_SIZE;
 int loops = LOOPS;
 unsigned int process_ID = 1;
 
-unsigned int MatrixA_Addr = ADDR_A;
-unsigned int MatrixB_Addr = ADDR_B;
-unsigned int MatrixC_Addr = ADDR_C;
 
 void memoryInit(string memfile) {
     // open the memory initialization file
@@ -74,7 +57,6 @@ class bus_master_if : virtual public sc_interface
     virtual bool WaitForAcknowledge(unsigned int mst_id) = 0;
     virtual void ReadData(unsigned int &data) = 0;
     virtual void WriteData(unsigned int data) = 0;
-
     virtual void AckFinish(bool status) = 0;
     virtual bool WaitForFinish() = 0;
 };
@@ -111,7 +93,6 @@ class Oscillator: public sc_module{
     Oscillator(sc_module_name name):sc_module(name){
       SC_THREAD(oscillator_implementation);
     }
-
 };
 
 struct Task_Info{
@@ -138,149 +119,23 @@ struct Task_Info{
 class Bus : public sc_module, public bus_master_if, public bus_minion_if{
 
 public:
-
-  std::queue<unsigned int> data_buffer;
-  std::queue<struct Task_Info> task, ack_task; //, idle_task
-  std::queue<bool> ack_status, finish_status;
-
-  int target_transfer_counter; //= 0;
-  int actual_transfer_counter; //= 0;
-  bool bus_is_busy;
-
   sc_in<sc_logic> clk;
-
-  struct Task_Info current_task;// = Task_Info(0,0,NONE,0);  // initialized to invalid task
-
-  int request_count;
+  sc_in<sc_lv<BUS_CAP>> sig; // 
+  sc_in<sc_logic> busy;
+  sc_out<sc_logic> out;
 
   SC_HAS_PROCESS(Bus);
 
   Bus (sc_module_name name) : sc_module(name){
-    current_task = Task_Info(0,0,NONE,0);
-    bus_is_busy = false;
-    request_count = 0;
-    SC_THREAD(arbiter); // implement below
+
+   	SC_THREAD(arbiter); // implement below
       sensitive << clk.pos();
   }
 
   void arbiter(){
     while(true){
-      wait(CLK_PERIOD,SC_NS);
-      wait(CLK_PERIOD,SC_NS);
-      if(!task.empty()){
-        if(!bus_is_busy){
-          if(current_task.mst_id!=0){
-            task.push(current_task);
-          }
-          current_task = task.front();
-          task.pop();
-        }
-      }
+    	out.write(sig.and_reduce());// 0 dominats
     }
-  }
-
-  void Request(unsigned int mst_id, unsigned int addr, unsigned int op, unsigned int len){
-    // wait 2  cycles
-    wait(CLK_PERIOD,SC_NS);
-    wait(CLK_PERIOD,SC_NS);
-    if(request_count == 0){
-      //TODO: // give this to current_task
-      current_task = Task_Info(mst_id, addr, op, len);
-    }else{
-      task.push(Task_Info(mst_id, addr, op, len));
-    }
-    cout << "New Request ID = " << mst_id << endl;
-    request_count++;
-  }
-
-  bool WaitForAcknowledge(unsigned int mst_id){
-    while(true){
-      wait(CLK_PERIOD,SC_NS);
-      if(!ack_task.empty() && !bus_is_busy){
-        Task_Info check = ack_task.front();
-        if (check.mst_id == mst_id){
-          target_transfer_counter = check.len;
-          actual_transfer_counter = 0;
-          if(check.op == C){
-            bus_is_busy = false;
-            //idle_task.push(idle_task.pop());
-          }else{
-            bus_is_busy = true;
-          }
-          ack_task.pop(); // !!!
-          bool output = ack_status.front();
-          ack_status.pop();
-          return output;
-        }
-      }
-    }
-  }
-
-  void ReadData(unsigned int &data){
-    wait(CLK_PERIOD,SC_NS);
-    wait(CLK_PERIOD,SC_NS);
-    while(data_buffer.empty()){
-      wait(CLK_PERIOD,SC_NS);
-    }
-    data = data_buffer.front();
-    data_buffer.pop();
-    actual_transfer_counter++;
-    if(actual_transfer_counter==target_transfer_counter){
-      bus_is_busy = false;
-    }
-  }
-
-  void WriteData(unsigned int data){
-    wait(CLK_PERIOD,SC_NS);
-    data_buffer.push(data);
-  }
-
-// need to be in a while loop, keep listening
-  void Listen(unsigned int &req_addr, unsigned int &req_op, unsigned int &req_len){
-    req_addr = current_task.addr;
-    req_len = current_task.len;
-    req_op = current_task.op;
-  }
-
-  void Acknowledge(bool status){
-    wait(CLK_PERIOD,SC_NS);
-    ack_task.push(current_task);
-    ack_status.push(status);
-    request_count--;
-    // reset current_task (make current task invalid)
-    current_task.mst_id = 0;
-    current_task.op = NONE;
-  }
-
-  void SendReadData(unsigned int data){
-    data_buffer.push(data);
-  }
-
-  void ReceiveWriteData(unsigned int &data){
-    while(data_buffer.empty()){
-      wait(CLK_PERIOD,SC_NS);
-    }
-    data = data_buffer.front();
-    data_buffer.pop();
-    actual_transfer_counter++;
-    if(actual_transfer_counter==target_transfer_counter){
-      bus_is_busy = false;
-    }
-  }
-//-------------------------- extra ----------------------
-  bool WaitForFinish(){
-    while(true){
-      wait(CLK_PERIOD,SC_NS);
-      if(!finish_status.empty()){
-        bool output = finish_status.front();
-        finish_status.pop();
-        return output;
-      }
-    }
-  }
-
-  void AckFinish(bool status){
-    finish_status.push(status);
   }
 
 };
@@ -335,260 +190,149 @@ public:
   }
 };
 
-class Hardware: public sc_module{
+// controller serves as transciver
+class CAN_ctrl: public sc_module{
 public:
-  sc_port<bus_minion_if> slave;
-  sc_port<bus_master_if> master;
-  sc_in<sc_logic> clk;
+	sc_in<sc_logic> clk;
+	sc_in<sc_lv<DATA_LEN>> data;
+	sc_in<sc_logic> bus_busy;
+	sc_in<sc_logic> mode; // 0 is write, 1 is read
+	sc_in<sc_logic> from_bus; //current value on bus
 
-  unsigned int addr, op, len;
-  unsigned int command_addr;
+	sc_out<sc_logic> listening; // enter listening mode once backoff
+	sc_out<sc_logic> to_bus;
+	sc_out<sc_lv<DATA_LEN>> received_data;
+	sc_out<sc_logic> data_ready;
+	//sc_signal<sc_lv<9999>> can_msg; // construct CAN data frame message
+	bool back_off;
+	//bool data_ready;
+	//bool bus_free; // need to know when bus is free
+	int counter;
 
-  bool io_access;// = false;
-  bool memory_access_A;// = false;
-  bool memory_access_B;// = false;
-  bool memory_access_C;
-  bool calculate;// = false;
 
-  unsigned int cache_A[CACHE_SIZE];
-  unsigned int cache_B[CACHE_SIZE];
-  unsigned int cache_C[CACHE_SIZE];
+	SC_HAS_PROCESS(CAN_ctrl);
 
-  unsigned int location[3];
-  unsigned int size;
+	CAN_ctrl(sc_module_name name): sc_module(name){
+		counter = 0;
+		back_off = false;
+		//data_ready = false;
+		SC_THREAD(ctrl_op);
+			sensitive << clk.pos();
+	}
 
-  unsigned int ID;
+	void ctrl_op{
+		while(true){
+			if(mode.read()==SC_LOGIC_1 || back_off){
+				// listenting
+				TODO:
+				//construct received data
+				//check if want to take the data
+				if(bus_busy == SC_LOGIC_0 && back_off){
+					back_off = false;
+				}
 
-  SC_HAS_PROCESS(Hardware);
+			}
+			else {
+				// writing
+				wait(CLK_PERIOD, SC_NS);
+				to_bus.write(can_msg.get_bit(counter));
+			
+				if(from_bus.read() != can_msg.get_bit(counter)){
+					back_off = true;
+					counter = 0;
+				}
+				else{
+					counter ++;
+				}
+				
+			}
+		}
+	}
 
-  Hardware (sc_module_name name) : sc_module(name){
-    io_access = false;
-    memory_access_A = false;
-    memory_access_B = false;
-    memory_access_C = false;
-    calculate = false;
-    SC_THREAD(function)
-      sensitive << clk.pos();
-    // SC_THREAD()
-    //   sensitive << Clk.pos();
-  }
+}
 
-  void function(){
-    //wait for 1 cc
-    //wait(CLK_PERIOD,SC_NS);
-    while(true){
-      // slave mode
-      while(true){
-        wait(CLK_PERIOD,SC_NS);
-        io_access = false;
-        slave->Listen(addr,op,len);
-        if(op==C){
-          cout << "Hardware: Received Requested to Calculate"<< endl;
-          command_addr = addr;
-          break;
-        }
-      }
-      if(addr >= 0 && addr <= IO_ONLY && len == 4){
-        io_access = true;
-        cout << "Hardware: Acked to Calculate"<< endl;
-        slave->Acknowledge(true);
-      }else{
-        slave->Acknowledge(false);
-      }
+class Flight_computer: public sc_module{
+public:
+	sc_in<sc_logic> clk;
+	sc_in<sc_lv<DATA_LEN>> received_data;
+	CAN_ctrl *ctrl_inst;
+	SC_HAS_PROCESS(Flight_computer);
+	Flight_computer(sc_module_name name): sc_module(name){
+		ctrl_inst = new CAN_ctrl("Flight_computer_CAN_ctrl");
+		SC_THREAD(control);
+	}
 
-      // master mode, access command from reserved IO
-      if(io_access == true){
-        // ready to access data from memory
-        ID = process_ID;
-        process_ID++;
-        cout << "Hardware: Request to Access Command"<< endl;
-        master->Request(ID,command_addr,R,4);
-        if(master->WaitForAcknowledge(ID)){
-          cout << "Hardware: Acked to Access Command"<< endl;
-          for (int i = 0; i<3;i++){
-            master->ReadData(location[i]);
-          }
-          master->ReadData(size);
-          memory_access_C = true;
-        }else{
-          memory_access_C = false;
-        }
-      }
+	void control(){
 
-      if(memory_access_C){
-        ID = process_ID;
-        process_ID++;
-        cout << "Hardware: Request to Reset Memory"<< endl;
-        master->Request(ID,location[2],W,size*size);
-        if(master->WaitForAcknowledge(ID)){
-          cout << "Hardware: Acked to Reset Memory"<< endl;
-          for (int i = 0; i<size*size; i++){
-            master->WriteData(0);
-          }
-        }
-        memory_access_A = true;
-      }else{
-        memory_access_A = false;
-      }
+	}
 
-      // first matrix access
-      if(memory_access_A){
-        ID = process_ID;
-        process_ID++;
-        //cout << "size = " << size << endl;
-        cout << "Hardware: Request to Access Matrix A"<< endl;
-        master->Request(ID,location[0],R,size*size);
-        if(master->WaitForAcknowledge(ID)){
-          cout << "Hardware: Acked to Access Matrix A"<< endl;
-          for (int i = 0; i<size*size; i++){
-             master->ReadData(cache_A[i]);
-          }
-          memory_access_B = true;
-        }else{
-          memory_access_B = false;
-        }
-      }
-      // second matrix access
-      if(memory_access_B){
-        ID = process_ID;
-        process_ID++;
-        cout << "Hardware: Request to Access Matrix B"<< endl;
-        master->Request(ID,location[1],R,size*size);
-        if(master->WaitForAcknowledge(ID)){
-          cout << "Hardware: Acked to Access Matrix B"<< endl;
-          for (int i = 0; i<size*size; i++){
-            master->ReadData(cache_B[i]);
-          }
-          calculate = true;
-        }else{
-          calculate = false;
-        }
-      }
 
-      // calculation (acceleration)
-      if(calculate){
-        for(int i = 0; i<size; i++){
-          for(int j = 0; j<size; j++){
-            cache_C[i*size+j] = 0;
-            for (int k = 0; k<size; k++){
-              cache_C[i*size+j] += cache_A[i*size+k] * cache_B[k*size+j];
-            }
-          }
-        }
-      }
 
-      if(calculate){
-        ID = process_ID;
-        process_ID++;
-        cout << "Hardware: Request to Access Matrix C"<< endl;
-        master->Request(ID,location[2],W,size*size);
-        if(master->WaitForAcknowledge(ID)){
-          cout << "Hardware: Ack to Access Matrix C"<< endl;
-          for (int i = 0; i<size*size; i++){
-            master->WriteData(cache_C[i]);
-          }
-        }
-        cout << "Hardware: Task Finished"<< endl;
-        master->AckFinish(true);
-      }else{
-        cout << "Hardware: Task Failed"<< endl;
-        master->AckFinish(false);
-      }
-    }
-  }
 };
 
-class Software: public sc_module{
+
+class Landing_gear: public sc_module{
 public:
+	sc_in<sc_logic> clk;
+	sc_out<sc_lv<DATA_LEN>> data_out;
+	sc_signal<sc_lv<DATA_LEN>> received_data;
+	CAN_ctrl *ctrl_inst;
+	SC_HAS_PROCESS(Landing_gear);
 
-  sc_port<bus_master_if> master;
+	Landing_gear(sc_module_name name): sc_module(name){
+		ctrl_inst = new CAN_ctrl("Landing_gear_CAN_ctrl");
+		ctrl_inst -> data(received_data);
+		SC_THREAD(deployment);
+			sensitive << clk.pos();
+	}
+
+	void deployment(){
+		while(true){
+			// landing code = 10
+			if(received_data.to_int() == 10){
+				wait(CLK_PERIOD*1000, SC_NS);
+				// landing complete code = 100
+				data_out.write(static_cast<sc_lv<DATA_LEN>>bitset<DATA_LEN>(100));
+			}
+		}
+	}
+};
+
+
+class Sensor: public sc_module{
+public:
   sc_in<sc_logic> clk;
-  unsigned int ID;
+  sc_signal<sc_lv<DATA_LEN>> sensor_data;
+  CAN_ctrl *ctrl_inst;
+  SC_HAS_PROCESS(Sensor);
 
-  SC_HAS_PROCESS(Software);
+  Sensor(sc_module_name name): sc_module(name){
+    // map to its controller
+    ctrl_inst = new CAN_ctrl("Sensor_CAN_ctrl");
+    ctrl_inst -> data(sensor_data);
+    // need to map all signal from controller
 
-  Software(sc_module_name name) : sc_module(name){
-    SC_THREAD(With_Hardware);
-    //SC_THREAD(Without_Hardware);
+    SC_THREAD(update_data);
+
       sensitive << clk.pos();
   }
 
-  void Without_Hardware(){
-    for(int a = 0; a<loops; a++){
-      ID = process_ID;
-      process_ID++;
-      master->Request(ID,MatrixC_Addr,W,matrix_size*matrix_size);
-      if(master->WaitForAcknowledge(ID)){
-        for (int i = 0; i<matrix_size*matrix_size; i++){
-          master->WriteData(0);
-        }
-      }
-      unsigned int cache1, cache2, cache3;
-
-      for(int i = 0; i<matrix_size; i++){
-        for(int j = 0; j<matrix_size; j++){
-          cache3 = 0;
-          for (int k = 0; k<matrix_size; k++){
-            ID = process_ID;
-            process_ID++;
-            master->Request(ID,MatrixA_Addr+i*matrix_size+k,R,1);
-            if(master->WaitForAcknowledge(ID)){
-              master->ReadData(cache1);
-            }
-            ID = process_ID;
-            process_ID++;
-            master->Request(ID,MatrixB_Addr+k*matrix_size+j,R,1);
-            if(master->WaitForAcknowledge(ID)){
-              master->ReadData(cache2);
-            }
-            cache3 += cache1*cache2;
-          }
-          ID = process_ID;
-          process_ID++;
-          master->Request(ID,MatrixC_Addr+i*matrix_size+j,W,1);
-          if(master->WaitForAcknowledge(ID)){
-            master->WriteData(cache3);
-          }
-        }
-      }
-    }
-    sc_stop();
-  }
-
-  void With_Hardware(){
-    for (int i=0; i<loops; i++){
-      cout << "==================LOOP "<< i <<"==================" << endl;
-      ID = process_ID;
-      process_ID++;
-      unsigned int command[4] = {MatrixA_Addr,MatrixB_Addr,MatrixC_Addr,matrix_size};
-      master->Request(ID,0,W,4);
-      cout << "Software: Request Write to Memory"<< endl;
-      if(master->WaitForAcknowledge(ID)){
-        cout << "Software: Request Acknowledged"<< endl;
-        for (int i = 0; i<4; i++){
-          master->WriteData(command[i]);
-        }
-      }
-      ID = process_ID;
-      process_ID++;
-      master->Request(ID,0,C,4);
-      if(master->WaitForAcknowledge(ID)){
-        if(master->WaitForFinish()){
-          cout << "Software: Task Finished" << endl;
-        }else{
-          cout << "Software: Task FAILLED" << endl;
-        }
-      }else{
-        cout << "Software: Task FAILLED" << endl;
-      }
-    }
-    sc_stop();
+  // simulate that the plane descend 1 m every 100 clock cycles
+  void update_data(){
+  	for (int i=1000;i>0;i--){
+  		wait(CLK_PERIOD*100, SC_NS);
+  		sensor_data.write(static_cast<sc_lv<DATA_LEN>>bitset<DATA_LEN>(i)); // really?
+  	}
   }
 };
+
+
+
 
 class System : public sc_module{
 public:
   sc_signal<sc_logic> clk;
+  sc_lv<BUS_CAP> bit_buffer;
 
   Memory *memory;
   Hardware *hardware;
@@ -597,6 +341,10 @@ public:
   Oscillator *oscillator;
 
   System(sc_module_name name, char* mem_init_file) : sc_module(name){
+    for (int i=0;i<BUS_CAP;i++){
+  		bit_buffer.set_bit(i,SC_LOGIC);
+  	}
+
     memory = new Memory("MEM1", mem_init_file);
     hardware = new Hardware("HW1");
     software = new Software("SW1");
