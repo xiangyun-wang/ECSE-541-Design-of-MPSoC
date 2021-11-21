@@ -14,7 +14,7 @@
 #define LAND_GEAR_CODE 001   //message code for landing gear
 #define SENSOR_CODE 010      //message code for sensor
 //#include "header file"
-
+// hey it's alfred testing git
 unsigned int memory[MEMORY_SIZE];
 unsigned int process_ID = 1;
 
@@ -98,7 +98,7 @@ public:
 
   Bus(sc_module_name name) : sc_module(name)
   {
-    SC_THREAD(arbiter); 
+    SC_THREAD(arbiter);
       sensitive << clk.pos();
   }
 
@@ -201,7 +201,7 @@ public:
       memcpy(message.ACK,new_ACK,32);
       msg_to_bus_ack.write(message);
     }
-  
+
   }
 
 };
@@ -230,7 +230,7 @@ public:
   void control(){
     if (received_id == sensor_code){//data from sensor
       if (received_data <= 500){//when height less than 500m
-        //tell landing gear to prepare 
+        //tell landing gear to prepare
         transmit_data
       }
 
@@ -302,7 +302,7 @@ public:
 };
 
 void convert_decimal_to_array(){
-  bitset<32> A=N;//A will hold the binary representation of N 
+  bitset<32> A=N;//A will hold the binary representation of N
   for(int i=0,j=31;i<32;i++,j--)
   {
      //Assigning the bits one by one.
