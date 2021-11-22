@@ -5,18 +5,18 @@
 #include <string>
 #include <iomanip>
 
-#define MEMORY_SIZE (1 << (10 + 6))
-#define DATA_LEN 32 // datalenth is 32 bit, 4 byte
-#define BUS_CAP 10  // bus is able to take 10 nodes
+//#define MEMORY_SIZE (1 << (10 + 6))
+//#define DATA_LEN 32 // datalenth is 32 bit, 4 byte
+//#define BUS_CAP 10  // bus is able to take 10 nodes
 #define CLK_HALF_PERIOD 500
 #define CLK_PERIOD 1000      // clock at 1 MHz
-#define FLIGHT_COMP_CODE {0,0,0,0,0,0,0,0,0,0,0} //message code for flight computer
-#define LAND_GEAR_CODE 001   //message code for landing gear
-#define SENSOR_CODE 010      //message code for sensor
+//#define FLIGHT_COMP_CODE {0,0,0,0,0,0,0,0,0,0,0} //message code for flight computer
+//#define LAND_GEAR_CODE 001   //message code for landing gear
+//#define SENSOR_CODE 010      //message code for sensor
 //#include "header file"
 // hey it's alfred testing git
-unsigned int memory[MEMORY_SIZE];
-unsigned int process_ID = 1;
+//unsigned int memory[MEMORY_SIZE];
+//unsigned int process_ID = 1;
 
 class bus_master_if : virtual public sc_interface
 {
@@ -54,14 +54,14 @@ public:
 
 struct Message
 {
-  unsigned int IFS[3] = {};
+  unsigned int IFS[3] = {}; //initialize to zeros
   unsigned int SOF[1] = {0};
   unsigned int base_ID[11];
   unsigned int SRR[1] = {1};
   unsigned int IDE[1] = {1};
   unsigned int extension_ID[18] = {}; //initialize to zeros
   unsigned int RTR[1] = {0};
-  unsigned int control_field[6] = {0, 0, 0, 1, 0, 0};
+  unsigned int control_field[6] = {0, 0, 0, 1, 0, 0};// datalength fixed at 4 byte
   unsigned int data;
   unsigned int CRC[15];
   unsigned int CRC_deli[1] = {1};
@@ -76,44 +76,57 @@ struct Message
     CRC = CRC;
     ACK = ACK;
   }
-  // Message(){
-  //   mst_id = 0;
-  //   addr = 0;
-  //   op = NONE;
-  //   len = 0;
-  // }
+  Message(){
+
+  }
 };
 
 //-------------
-class Bus : public sc_module, public bus_master_if, public bus_minion_if
+class Bus : public sc_module, public bus_master_if
 {
 
 public:
   sc_in<sc_logic> clk;
-  sc_in<Message> data_in;
-  sc_in<sc_logic> busy;
-  sc_out<Message> data_out;
+  sc_in<Message> msg_in;
+  sc_out<Message> msg_out;
+  sc_in<sc_logic> busy_in;
+  sc_out<sc_logic> busy_out;
 
   SC_HAS_PROCESS(Bus);
 
   Bus(sc_module_name name) : sc_module(name)
   {
-    SC_THREAD(arbiter);
+    SC_THREAD(bus_op);
       sensitive << clk.pos();
   }
 
-  void arbiter()
+  void bus_op()
   {
     while (true)
     {
-      data_out.write(data_in.read());
+      msg_out.write(msg_in.read());
     }
   }
 };
 
+
 struct Log{
   unsigned int time_stamp;
+  unsigned int id;
   unsigned int data;
+
+  Log(unsigned int time_stamp, unsigned int id, unsigned int data)
+  {
+    time_stamp = time_stamp;
+    id = id;
+    data = data;
+  }
+  Log(){
+  	time_stamp = 0;
+  	id = 0;
+  	data = 0;
+  }
+
 };
 
 
@@ -124,8 +137,8 @@ public:
   sc_in<int> addr;
   sc_in<sc_logic> read_flag;
   sc_in<sc_logic> write_flag;
-  sc_in<Log> data_in;
-  sc_out<Log> data_out;
+  sc_in<Log> log_in;
+  sc_out<Log> log_out;
   struct Log mem[2048];
 
   SC_HAS_PROCESS(Memory);
@@ -140,7 +153,7 @@ public:
   {
     while (true)
     {
-      if (read_flag.read()==SC_LOGIC_1&&write_flag.read()==SC_LOGIC_0){//read
+      if (read_flag.read() == SC_LOGIC_1 && write_flag.read()==SC_LOGIC_0){//read
         data_out.write(mem[addr.read()]);
       }
       else if(read_flag.read()==SC_LOGIC_0&&write_flag.read()==SC_LOGIC_1){//write
@@ -155,13 +168,14 @@ class CAN_ctrl : public sc_module, bus_master_if
 {
 public:
   sc_in<sc_logic> clk;
-  sc_in<Message> msg_from_bus;
+  sc_in<struct Message> msg_from_bus;
   sc_in<unsigned int> data_from_LRU;
-  sc_in<sc_logic> mode;     // 0 is write, 1 is read
+  sc_in<unsigned int> id_from_LRU;
+  sc_in<sc_logic> mode;     // ??????????????????????
 
-  sc_out<sc_logic> listening; // enter listening mode once backoff
-  sc_out<Message> msg_to_bus_ack;
-  sc_out<Message> msg_to_bus_og;
+  sc_out<sc_logic> listening; // ?????????????????????????
+  sc_out<struct Message> msg_to_bus_ack;
+  sc_out<struct Message> msg_to_bus_og;
   sc_out<unsigned int> id_to_LRU;
   sc_out<unsigned int> data_to_LRU;
   sc_out<sc_logic> data_ready;
@@ -174,67 +188,112 @@ public:
 
   SC_HAS_PROCESS(CAN_ctrl);
 
-  CAN_ctrl(sc_module_name name, unsigned int base_ID[11]) : sc_module(name)
+  CAN_ctrl(sc_module_name name) : sc_module(name)
   {
-    counter = 0;
+    // counter = 0;
     base_ID = base_ID;
-    back_off = false;
+    // back_off = false;
     // SC_THREAD(ctrl_transmit);
     //   sensitive << clk.pos();
     SC_THREAD(ctrl_receive);
       sensitive << clk.pos();
   }
 
-  void WriteMessage(Message msg){
-    msg_to_bus_og.write(msg);
+  struct Message Encode(unsigned int id, unsigned int data){
+  	// TODO: construct CRC
+  	struct Message msg = new Message(unsigned int *id, unsigned int *data, unsigned int *CRC, unsigned int *ACK);
+  	return msg;
   }
 
+  // CAN controller transmit message
+  void WriteMessage(unsigned int id, unsigned int data){
+    while(true){
+    	msg_to_bus_og.write(Encode(id,data));
+    	wait(CLK_PERIOD,SC_NS);
+    	if(msg_from_bus.read()==Encode(id,data)){ // check if the bus content is same as transmitted
+    		while(true){
+    			wait(CLK_PERIOD,SC_NS);
+    			if(msg_from_bus.read().ACK[0] == 0){ // acked!
+    				return;
+    			}
+    			// if not acked, wait!
+    		}
+    	}
+    	else{
+    		wait(CLK_PERIOD*990,SC_NS,NEED_TO_CHECK!!!!!!!);
+
+ 		   	// time to transmit the entire CAN message
+    	}
+    }
+  }
+
+  // THREAD
   void ctrl_receive()
   {
     while (true)
     {
       wait(CLK_PERIOD,SC_NS);
       // listenting
-      data_to_LRU.write(msg_from_bus.read().data);
-      struct Message message = msg_from_bus.read();
+      data_to_LRU.write(msg_from_bus.read().data); // decode the data and write to LRU
+      id_to_LRU.write(msg_from_bus.read().base_ID);
+      struct Message *message = msg_from_bus.read();// need to check
       unsigned int new_ACK[1] = {0};
       memcpy(message.ACK,new_ACK,32);
       msg_to_bus_ack.write(message);
     }
-
   }
+  // void ack_msg(struct Message input_msg){
+  // 	struct Message msg = new Message();
+  // 	memcpy(&msg, &input_msg, sizeof(input_msg));
+  // 	msg_to_bus_ack.write()
+  // }
+
 
 };
 
 class Flight_computer : public sc_module
 {
 public:
+  sc_port<bus_master_if> bus_port_fc;
   sc_in<sc_logic> clk;
   sc_signal<unsigned int> received_id;
+  //sc_signal<unsigned int> transmit_id;
   sc_signal<unsigned int> received_data;
-  sc_signal<unsigned int> transmit_data;
+  //sc_signal<unsigned int> transmit_data;
   CAN_ctrl *ctrl_inst;
   SC_HAS_PROCESS(Flight_computer);
   unsigned int flight_comp_code[11] = {0,0,0,0,0,0,0,0,0,0,0};
-  unsigned int sensor_code[11] = {0,1,0,0,0,0,0,0,0,0,0};
+  unsigned int landing_gear_code[11]= {0,0,1,0,0,0,0,0,0,0,0};
+  unsigned int sensor_code[11] 		= {0,1,0,0,0,0,0,0,0,0,0};
   Flight_computer(sc_module_name name) : sc_module(name)
   {
-    ctrl_inst = new CAN_ctrl("Flight_computer_CAN_ctrl",flight_comp_code);
-    ctrl_inst -> data_from_LRU(transmit_data);
+    ctrl_inst = new CAN_ctrl("Flight_computer_CAN_ctrl");
+    //ctrl_inst -> data_from_LRU(transmit_data);
     ctrl_inst -> data_to_LRU(received_data);
     ctrl_inst -> id_to_LRU(received_id);
+    //ctrl_inst -> id_from_LRU(transmit_id);
     SC_THREAD(control);
       sensitive << clk;
   }
 
   void control(){
-    if (received_id == sensor_code){//data from sensor
-      if (received_data <= 500){//when height less than 500m
-        //tell landing gear to prepare
-        transmit_data
-      }
+  	while(true){
+  		wait(CLK_PERIOD,SC_NS);
+  		if (compare_array(received_id, sensor_code, 11)){//data from sensor(need to check)
+      		if (received_data == 500){//when height less than 500m
+        		//tell landing gear to prepare: data = 9999
+        		// transmit_data.write(9999);
+        		// transmit_id.write(flight_comp_code);
+        		bus_port_fc -> WriteMessage(flight_comp_code, 9999);
+      		}
+    	}
+    	else if(compare_array(received_id, landing_gear_code, 11)){
+    		if(received_data == 9999){
+    			cout << "landing gear deployed successfully" << endl;
+    		}
+    	}
+  	}
 
-    }
   }
 };
 
@@ -242,15 +301,23 @@ class Landing_gear : public sc_module
 {
 public:
   sc_in<sc_logic> clk;
+  sc_port<bus_master_if> bus_port_lg;
   sc_out<sc_lv<DATA_LEN> > data_out;
-  sc_signal<sc_lv<DATA_LEN> > received_data;
+  sc_signal<unsigned int> received_id;
+  //sc_signal<unsigned int> transmit_id;
+  sc_signal<unsigned int> received_data;
+  //sc_signal<unsigned int> transmit_data;
   CAN_ctrl *ctrl_inst;
+  unsigned int flight_comp_code[11] = {0,0,0,0,0,0,0,0,0,0,0};
+  unsigned int landing_gear_code[11]= {0,0,1,0,0,0,0,0,0,0,0};
+  unsigned int sensor_code[11] 		= {0,1,0,0,0,0,0,0,0,0,0};
   SC_HAS_PROCESS(Landing_gear);
 
   Landing_gear(sc_module_name name) : sc_module(name)
   {
     ctrl_inst = new CAN_ctrl("Landing_gear_CAN_ctrl");
     ctrl_inst->data(received_data);
+    ctrl_inst ->
     SC_THREAD(deployment);
     sensitive << clk.pos();
   }
@@ -260,11 +327,13 @@ public:
     while (true)
     {
       // landing code = 10
-      if (received_data.to_int() == 10)
-      {
-        wait(CLK_PERIOD * 1000, SC_NS);
-        // landing complete code = 100
-        data_out.write(static_cast<sc_lv<DATA_LEN> > bitset<DATA_LEN>(100));
+    wait(CLK_PERIOD, SC_NS);
+      if (compare_array(received_id, flight_comp_code, 11)){
+      	if (received_data == 9999){
+      		cout << "landing gear deploying!" << endl;
+      		wait(CLK_PERIOD * 1000, SC_NS);
+      		bus_port_lg -> WriteMessage(landing_gear_code, 9999);
+      	}
       }
     }
   }
@@ -273,9 +342,16 @@ public:
 class Sensor : public sc_module
 {
 public:
+  sc_port<bus_master_if> bus_port_sr;
   sc_in<sc_logic> clk;
-  sc_signal<sc_lv<DATA_LEN> > sensor_data;
+  //sc_signal<unsigned int> received_id;
+  //sc_signal<unsigned int> transmit_id;
+  //sc_signal<unsigned int> received_data;
+  //sc_signal<unsigned int> transmit_data;
   CAN_ctrl *ctrl_inst;
+  unsigned int flight_comp_code[11] = {0,0,0,0,0,0,0,0,0,0,0};
+  unsigned int landing_gear_code[11]= {0,0,1,0,0,0,0,0,0,0,0};
+  unsigned int sensor_code[11] 		= {0,1,0,0,0,0,0,0,0,0,0};
   SC_HAS_PROCESS(Sensor);
 
   Sensor(sc_module_name name) : sc_module(name)
@@ -295,19 +371,19 @@ public:
   {
     for (int i = 1000; i > 0; i--)
     {
-      wait(CLK_PERIOD * 100, SC_NS);
-      sensor_data.write(static_cast<sc_lv<DATA_LEN> > bitset<DATA_LEN>(i)); // really?
+      wait(CLK_PERIOD * 10, SC_NS);
+      bus_port_sr -> WriteMessage(sensor_code,i);
     }
   }
 };
 
-void convert_decimal_to_array(){
-  bitset<32> A=N;//A will hold the binary representation of N
-  for(int i=0,j=31;i<32;i++,j--)
-  {
-     //Assigning the bits one by one.
-     O[i]=A[j];
-  }
+bool compare_array(unsigned int *array1, unsigned int *array2, int length){
+	for(int i=0;i<length;i++){
+		if(array1[i] != array2[i]){
+			return false;
+		}
+	}
+	return true;
 }
 
 class System : public sc_module
