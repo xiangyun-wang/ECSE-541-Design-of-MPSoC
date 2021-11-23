@@ -104,14 +104,6 @@ struct Log{
 
 };
 
-bool compare_array(unsigned int *array1, unsigned int *array2, int length){ // -------------- might need to delete (or change to compare log?? no use though) -------------------
-  for(int i=0;i<length;i++){
-    if(array1[i] != array2[i]){
-      return false;
-    }
-  }
-  return true;
-}
 // end fo log struct
 
 // -------------- modules ---------------------------------------
@@ -137,12 +129,13 @@ public:
   {
     while (true)
     {
+      wait(CLK_PERIOD,SC_NS);
       msg_out.write(msg_in.read());
     }
   }
 };
 
-/*
+
 
 class Memory : public sc_module
 {
@@ -179,7 +172,7 @@ public:
   }
 };
 
-*/
+
 
 // controller serves as transciver, encoder, and decoder, is submodule of LRUs
 class CAN_ctrl : public sc_module, ctrl_interface
@@ -192,11 +185,8 @@ public:
   // whichever the following two messages going onto the bus will be determined in the top module
   sc_out<struct Message> msg_to_bus_ack;
   sc_out<struct Message> msg_to_bus_og;
-  sc_out<unsigned int> id_to_LRU;
-  sc_out<unsigned int> data_to_LRU;
-
-  bool back_off;
-  int counter;
+  sc_out<unsigned int> id_to_proc;
+  sc_out<unsigned int> data_to_proc;
 
   SC_HAS_PROCESS(CAN_ctrl);
 
@@ -210,13 +200,13 @@ public:
   //void WriteMessage(unsigned int id, unsigned int data){
   void WriteMessage(){
     while(true){
+      wait(CLK_PERIOD, SC_NS);
       // encode (recalculate each time, to avoid outdate data)--------- need to implement
       CRC[15] = {};
       ACK[1] = {1};
       // read id and data from input signals
       struct Message msg = new Message(unsigned int id, unsigned int data, unsigned int CRC, unsigned int ACK);
       // bus does arbitration upon receiving the message
-      wait(CLK_PERIOD, SC_NS);
       msg_to_bus_og.write(msg);
       // check if msg on bus it myself
     	if(cmpmsg(msg_from_bus.read(),msg)){
@@ -252,36 +242,6 @@ public:
   }
 };
 
-// class Flight_computer_LRU: public sc_module{
-// public:
-//   sc_in<sc_logic> clk;
-
-//   sc_in<struct Message> msg_from_bus;
-//   sc_out<struct Message> msg_to_bus_ack;
-//   sc_out<struct Message> msg_to_bus_og;
-
-//   sc_signal<sc_logic> clk_relay;
-//   sc_signal<struct Message> msg_to_bus_ack_relay;
-//   sc_signal<struct Message> msg_to_bus_og_relay;
-//   sc_signal<unsigned int> id_ctrl_to_proc;
-//   sc_signal<unsigned int> data_ctrl_to_proc;
-//   sc_signal<unsigned int> data_proc_to_ctrl;
-
-//   CAN_ctrl *ctrl_inst;
-//   Flight_computer_processor *fc_proc_inst;
-
-//   Flight_computer_LRU(sc_module_name name) : sc_module(name){
-//     ctrl_inst = new CAN_ctrl("Flight_computer_CAN_ctrl");
-//     fc_proc_inst = new Flight_computer_processor("Flight_computer_processor");
-
-//     // interface port map
-//     fc_proc_inst -> ctrl_port_fc(ctrl_inst);
-
-//     // signal map: LRU contains both CAN ctrl and processor
-//     ctrl_inst -> clk(clk);
-//   }
-// };
-
 class Flight_computer_processor : public sc_module
 {
 public:
@@ -313,7 +273,9 @@ public:
   		if (id_from_ctrl.read()==sensor_id){
           // check if the data reached
       		if (data_from_ctrl.read() == 500){
-        		ctrl_port_fc -> WriteMessage(flight_comp_code, 9999);
+            id_to_ctrl.wirte(flight_comp_id)
+            data_to_ctrl.write(9999);
+        		ctrl_port_fc -> WriteMessage();
       		}
     	}
     	else if(received_id == landing_gear_id){
@@ -409,11 +371,11 @@ public:
   }
   void send_data()
   {
-    wait(CLK_PERIOD * 1000, SC_NS);
-    //id_to_ctrl.write(sensor_id);
-    //data_to_ctrl.write(i);
-    ctrl_port_sr -> WriteMessage();
-    cout << "sensor data sent successfully (with ack detected)" << endl;
+    while (true){
+      wait(CLK_PERIOD * 1000, SC_NS);
+      ctrl_port_sr -> WriteMessage();
+      cout << "sensor data sent successfully (with ack detected)" << endl;
+    }
   }
 };
 
