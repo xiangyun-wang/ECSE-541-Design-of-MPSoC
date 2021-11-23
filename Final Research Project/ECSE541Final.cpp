@@ -256,56 +256,56 @@ public:
   }
 };
 
-class Flight_computer_LRU: public sc_module{
-public:
-  sc_in<sc_logic> clk;
-  sc_in<struct Message> msg_from_bus;
-  sc_out<struct Message> msg_to_bus_ack;
-  sc_out<struct Message> msg_to_bus_og;
+// class Flight_computer_LRU: public sc_module{
+// public:
+//   sc_in<sc_logic> clk;
 
-  sc_signal<unsigned int> received_id;
+//   sc_in<struct Message> msg_from_bus;
+//   sc_out<struct Message> msg_to_bus_ack;
+//   sc_out<struct Message> msg_to_bus_og;
   
+//   sc_signal<sc_logic> clk_relay;
+//   sc_signal<struct Message> msg_to_bus_ack_relay;
+//   sc_signal<struct Message> msg_to_bus_og_relay;
+//   sc_signal<unsigned int> id_ctrl_to_proc;
+//   sc_signal<unsigned int> data_ctrl_to_proc;
+//   sc_signal<unsigned int> data_proc_to_ctrl;  
 
+//   CAN_ctrl *ctrl_inst;
+//   Flight_computer_processor *fc_proc_inst;
 
+//   Flight_computer_LRU(sc_module_name name) : sc_module(name){
+//     ctrl_inst = new CAN_ctrl("Flight_computer_CAN_ctrl");
+//     fc_proc_inst = new Flight_computer_processor("Flight_computer_processor");
 
+//     // interface port map
+//     fc_proc_inst -> ctrl_port_fc(ctrl_inst);
 
-};
-
-
+//     // signal map: LRU contains both CAN ctrl and processor
+//     ctrl_inst -> clk(clk);
+//   }
+// };
 
 class Flight_computer_processor : public sc_module
 {
 public:
+  // need to map the port in top
   sc_port<ctrl_interface> ctrl_port_fc;
+  
+
   sc_in<sc_logic> clk;
+  sc_in<unsigned int> id_from_ctrl;
+  sc_in<unsigned int> data_from_ctrl;
+  sc_out<unsigned int> id_to_ctrl;
+  sc_out<unsigned int> data_to_ctrl;
 
-
-  // sc_signal<sc_logic> clk_sig;
-  // sc_signal<struct Message> msg_to_bus_ack_sig;
-  // sc_signal<struct Message> msg_to_bus_og_sig;
-  sc_signal<unsigned int> received_id;
-  sc_signal<unsigned int> received_data;
-
-  CAN_ctrl *ctrl_inst;
-
-  unsigned int flight_comp_code[11] = {0,0,0,0,0,0,0,0,0,0,0};
-  unsigned int landing_gear_code[11]= {0,0,1,0,0,0,0,0,0,0,0};
-  unsigned int sensor_code[11]    = {0,1,0,0,0,0,0,0,0,0,0};
+  unsigned int flight_comp_id[11] = {0,0,0,0,0,0,0,0,0,0,0};
+  unsigned int landing_gear_id[11]= {0,0,0,0,0,0,0,0,0,0,1};
+  unsigned int sensor_id[11]    = {0,0,0,0,0,0,0,0,0,1,0};
   SC_HAS_PROCESS(Flight_computer);
 
   Flight_computer(sc_module_name name) : sc_module(name)
   {
-    ctrl_inst = new CAN_ctrl("Flight_computer_CAN_ctrl");
-
-    // direct data pass through
-    ctrl_inst -> clk(clk.read());
-    ctrl_inst -> msg_from_bus(msg_from_bus.read());
-    ctrl_inst -> msg_to_bus_ack(msg_to_bus_ack.read());
-    ctrl_inst -> msg_to_bus_og(msg_to_bus_og.read());
-    // received decoded message from controller
-    ctrl_inst -> id_to_LRU(received_id);
-    ctrl_inst -> data_to_LRU(received_data);
-
     SC_THREAD(control);
       sensitive << clk;
   }
@@ -313,11 +313,12 @@ public:
   void control(){
   	while(true){
   		wait(CLK_PERIOD,SC_NS);
-  		if (compare_array(received_id, sensor_code, 11)){//data from sensor(need to check)
-      		if (received_data == 500){//when height less than 500m
-        		//tell landing gear to prepare: data = 9999
-        		// transmit_data.write(9999);
-        		// transmit_id.write(flight_comp_code);
+      // check if the data comes from sensor
+  		if (compare_array(id_from_ctrl.read(), sensor_code, 11)){
+          // check if the data reached
+      		if (data_from_ctrl.read() == 500){
+
+
         		ctrl_port_fc -> WriteMessage(flight_comp_code, 9999);
       		}
     	}
