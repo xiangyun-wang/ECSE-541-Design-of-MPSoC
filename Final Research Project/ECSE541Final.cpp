@@ -217,17 +217,26 @@ public:
       // encode (recalculate each time, to avoid outdate data)--------- need to implement (dont want to implement, wont cause error)
       // read id and data from input signals
       //cout<<"before creating new message"<<endl;
-      struct Message* msg = new Message(id_from_proc.read(), data_from_proc.read(), 0, false);
+      int data = data_from_proc.read();
+      int id = id_from_proc.read();
+      //cout<< "data is: " << data <<endl;
+      struct Message* msg = new Message();
+      msg->data = data;
+      msg->base_ID=id;
+      if(id == 0){
+        cout<<"sensitive data detected"<<endl;
+        sc_stop();
+      }
       //cout<<"after creating new message"<<endl;
       // bus does arbitration upon receiving the message
-      cout<<"message data before transmit: "<< msg->base_ID <<endl;
+      //cout<<"message data before transmit: "<< msg->base_ID <<endl;
       msg_to_bus_og.write(msg);
-      cout<<"message data after transmit: "<< msg->data <<endl;
+      //cout<<"message data after transmit: "<< msg->data <<endl;
       // check if msg on bus it myself
       wait(CLK_PERIOD*100,SC_NS);
       //cout<<"waited 100 CC"<<endl;
     	if(cmpmsg(msg_from_bus.read(),msg)){
-        cout<<"message is on the bus, waiting for ack"<<endl;
+        //cout<<"message is on the bus, waiting for ack"<<endl;
     		while(true){
     			wait(CLK_PERIOD,SC_NS);
           // check if the message written to bus is acked
@@ -304,12 +313,18 @@ public:
 
   void control(){
   	while(true){
-  		wait(CLK_PERIOD,SC_NS);
+      wait(CLK_PERIOD,SC_NS);
       // check if the data comes from sensor
+      //cout << "Flight controller -  id received from others: " << id_from_ctrl.read() << endl;
   		if (id_from_ctrl.read()==sensor_id){
           // check if the data reached
+          cout<<"data received from sensor"<<endl;
+          cout << "data is: " << data_from_ctrl.read()<<endl;
       		if (data_from_ctrl.read() == 500){
+            cout<<"altitude target reached"<<endl;
+            //sc_stop();
             id_to_ctrl.write(flight_comp_id);
+            //int a = 9999;
             data_to_ctrl.write(9999);
         		ctrl_port_fc -> WriteMessage();
       		}
@@ -317,6 +332,7 @@ public:
     	else if(id_from_ctrl.read() == landing_gear_id){
     		if(data_from_ctrl.read() == 9999){
     			cout << "landing gear deployed successfully" << endl;
+          sc_stop();
     		}
     	}
   	}
@@ -358,6 +374,9 @@ public:
     // landing code = 10
     wait(CLK_PERIOD, SC_NS);
       if (id_from_ctrl.read()==flight_comp_id){
+        cout << "landing gear message received from flight computer!" << endl;
+        cout << "received message is: "<< data_from_ctrl.read() << endl;
+        sc_stop();
       	if (data_from_ctrl.read() == 9999){
       		cout << "landing gear deploying!" << endl;
       		wait(CLK_PERIOD * 100, SC_NS);
@@ -405,9 +424,9 @@ public:
   {
     for (int i = 1000; i > 0; i--)
     {
-      wait(CLK_PERIOD * 1000, SC_NS);
       id_to_ctrl.write(sensor_id);
       data_to_ctrl.write(i);
+      wait(CLK_PERIOD * 1000, SC_NS);
       //ctrl_port_sr -> WriteMessage(sensor_id,i);
       //cout << "sensor data read: " << i << endl;
     }
@@ -416,7 +435,7 @@ public:
   {
     while (true){
       ctrl_port_sensor -> WriteMessage();
-      cout << "sensor data sent successfully (with ack detected)" << endl;
+      //cout << "sensor data sent successfully (with ack detected)" << endl;
       wait(CLK_PERIOD * 1000, SC_NS);
     }
   }
