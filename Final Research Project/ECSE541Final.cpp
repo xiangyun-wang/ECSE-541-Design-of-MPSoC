@@ -181,16 +181,17 @@ public:
 class CAN_ctrl : public sc_module, public ctrl_interface
 {
 public:
+  sc_out<struct Message*> msg_to_bus_og;
+
+  sc_out<struct Message*> msg_to_bus_ack;
   sc_in<sc_logic> clk;
   sc_in<struct Message*> msg_from_bus;
   sc_in<unsigned int> data_from_proc;
   sc_in<unsigned int> id_from_proc;
   sc_out<unsigned int> id_to_proc;
   sc_out<unsigned int> data_to_proc;
+// whichever the following two messages going onto the bus will be determined in the top module
 
-  // whichever the following two messages going onto the bus will be determined in the top module
-  sc_out<struct Message*> msg_to_bus_ack;
-  sc_out<struct Message*> msg_to_bus_og;
 
 
 
@@ -201,8 +202,8 @@ public:
   CAN_ctrl(sc_module_name name) : sc_module(name)
   {
     dummy = new Message(999,0,0,false);
-    msg_to_bus_og.write(dummy);
-    msg_to_bus_ack.write(dummy);
+
+
     SC_THREAD(ctrl_receive);
       sensitive << clk.pos();
   }
@@ -211,15 +212,22 @@ public:
   //void WriteMessage(unsigned int id, unsigned int data){
   void WriteMessage(){
     while(true){
+      //cout<<"Write Message is called"<<endl;
       wait(CLK_PERIOD, SC_NS);
       // encode (recalculate each time, to avoid outdate data)--------- need to implement (dont want to implement, wont cause error)
       // read id and data from input signals
+      //cout<<"before creating new message"<<endl;
       struct Message* msg = new Message(id_from_proc.read(), data_from_proc.read(), 0, false);
+      //cout<<"after creating new message"<<endl;
       // bus does arbitration upon receiving the message
+      cout<<"message data before transmit: "<< msg->base_ID <<endl;
       msg_to_bus_og.write(msg);
+      cout<<"message data after transmit: "<< msg->data <<endl;
       // check if msg on bus it myself
       wait(CLK_PERIOD*100,SC_NS);
+      //cout<<"waited 100 CC"<<endl;
     	if(cmpmsg(msg_from_bus.read(),msg)){
+        cout<<"message is on the bus, waiting for ack"<<endl;
     		while(true){
     			wait(CLK_PERIOD,SC_NS);
           // check if the message written to bus is acked
@@ -240,20 +248,28 @@ public:
   // THREAD
   void ctrl_receive()
   {
+    //msg_to_bus_ack.write(dummy);
+    //msg_to_bus_og.write(dummy);
     while (true)
     {
+
       wait(CLK_PERIOD,SC_NS);
+      //msg_to_bus_og.write(dummy);
       // decode the data and write to LRU
-      data_to_proc.write(msg_from_bus.read()->data);
-      id_to_proc.write(msg_from_bus.read()->base_ID);
-      if(msg_from_bus.read()->base_ID != 999){
-        // ack the received message
-        struct Message* message_read = new Message();
-        memcpy(message_read,msg_from_bus.read(),sizeof(struct Message));// need to check
-        message_read->ACK = true;
-        msg_to_bus_ack.write(message_read);
-      }else{
-        msg_to_bus_ack.write(dummy);
+      //cout<<"receiving message"<<endl;
+      if(msg_from_bus.read() != NULL){
+        data_to_proc.write(msg_from_bus.read()->data);
+        id_to_proc.write(msg_from_bus.read()->base_ID);
+        //cout<<"receiving message end"<<endl;
+        if(msg_from_bus.read()->base_ID != 999){
+          // ack the received message
+          struct Message* message_read = new Message();
+          memcpy(message_read,msg_from_bus.read(),sizeof(struct Message));// need to check
+          message_read->ACK = true;
+          msg_to_bus_ack.write(message_read);
+        }else{
+          msg_to_bus_ack.write(dummy);
+        }
       }
     }
   }
@@ -406,22 +422,72 @@ public:
   }
 };
 // --------------------------------------- need to implement ------------------
-class Bus_Ruler : public sc_modeule{
+class Bus_Ruler : public sc_module{
 public:
+  sc_in<sc_logic> clk;
   sc_in<struct Message*> msg_to_bus_ack_fc;
   sc_in<struct Message*> msg_to_bus_og_fc;
   sc_in<struct Message*> msg_to_bus_ack_lg;
   sc_in<struct Message*> msg_to_bus_og_lg;
   sc_in<struct Message*> msg_to_bus_ack_sensor;
   sc_in<struct Message*> msg_to_bus_og_sensor;
+  sc_out<struct Message*> msg_to_bus;
 
-  sc_out<struct Message*> msg_to_bus_og_sensor;
+  bool message_on_bus;
+
+  SC_HAS_PROCESS(Bus_Ruler);
+
+  Bus_Ruler(sc_module_name name) : sc_module(name)
+  {
+    message_on_bus = false;
+    SC_THREAD(Update_Bus);
+      sensitive << clk.pos();
+  }
+
+  void Update_Bus(){
+    while(true){
+      message_on_bus = false;
+      wait(CLK_PERIOD,SC_NS);
+      if(msg_to_bus_og_fc.read()!=NULL && msg_to_bus_og_fc.read()->base_ID != 999){
+        msg_to_bus.write(msg_to_bus_og_fc.read());
+        wait(CLK_PERIOD*100,SC_NS);
+        message_on_bus = true;
+      }else if(msg_to_bus_og_lg.read()!=NULL && msg_to_bus_og_lg.read()->base_ID != 999){
+        msg_to_bus.write(msg_to_bus_og_lg.read());
+        wait(CLK_PERIOD*100,SC_NS);
+        message_on_bus = true;
+      }else if(msg_to_bus_og_sensor.read()!=NULL&&msg_to_bus_og_sensor.read()->base_ID != 999){
+        msg_to_bus.write(msg_to_bus_og_sensor.read());
+        wait(CLK_PERIOD*100,SC_NS);
+        message_on_bus = true;
+      }
+
+      if(message_on_bus){
+        while(true){
+          //wait for ack
+          if(msg_to_bus_ack_fc.read()->ACK){
+            msg_to_bus.write(msg_to_bus_ack_fc.read());
+            break;
+          }else if(msg_to_bus_ack_lg.read()->ACK){
+            msg_to_bus.write(msg_to_bus_ack_lg.read());
+            break;
+          }else if(msg_to_bus_ack_sensor.read()->ACK){
+            msg_to_bus.write(msg_to_bus_ack_sensor.read());
+            break;
+          }
+          wait(CLK_PERIOD,SC_NS);
+        }
+      }
+    }
+  }
+
 };
 // ------------------------------------ need to implement --------------------
 class System : public sc_module
 {
 public:
   Oscillator *oscillator;
+  Bus_Ruler *bus_ruler;
   Bus *bus;
   Flight_computer_processor *fc_proc;
   CAN_ctrl *fc_ctrl;
@@ -497,12 +563,16 @@ public:
   {
 
     oscillator = new Oscillator("OSC1");
+    bus_ruler = new Bus_Ruler("bus_ruler1");
     bus = new Bus("bus");
     fc_proc = new Flight_computer_processor("fc1");
-    fc_ctrl = new CAN_ctrl("fc_CAN");
     lg_proc = new Landing_gear_processor("lg1");
+    sensor_proc = new Sensor_processor("alt_sensor");
+
+
+    cout << "creating instances" <<endl;
     lg_ctrl = new CAN_ctrl("lg_CAN");
-    sensor_proc = new Sensor_processor("alt sensor");
+    fc_ctrl = new CAN_ctrl("fc_CAN");
     sensor_ctrl = new CAN_ctrl("sensor_CAN");
 
 
@@ -514,6 +584,7 @@ public:
     // clk mapping (8)
     oscillator->clk(clk);
     bus->clk(clk);
+    bus_ruler->clk(clk);
     fc_proc->clk(clk);
     fc_ctrl->clk(clk);
     lg_proc->clk(clk);
@@ -524,6 +595,15 @@ public:
     // bus signal mapping (2)
     bus->msg_in(msg_in_bus);
     bus->msg_out(msg_out_bus);
+
+    // bus ruler mapping(7)
+    bus_ruler->msg_to_bus_ack_fc(msg_to_bus_ack_fc);
+    bus_ruler->msg_to_bus_og_fc(msg_to_bus_og_fc);
+    bus_ruler->msg_to_bus_ack_lg(msg_to_bus_ack_lg);
+    bus_ruler->msg_to_bus_og_lg(msg_to_bus_og_lg);
+    bus_ruler->msg_to_bus_ack_sensor(msg_to_bus_ack_sensor);
+    bus_ruler->msg_to_bus_og_sensor(msg_to_bus_og_sensor);
+    bus_ruler->msg_to_bus(msg_in_bus);
 
     // flight computer processor mapping (4)
     fc_proc->id_from_ctrl(id_from_ctrl_fc);
@@ -570,51 +650,13 @@ public:
     sensor_ctrl->msg_to_bus_ack(msg_to_bus_ack_sensor);   // important
     sensor_ctrl->msg_to_bus_og(msg_to_bus_og_sensor);     // important
 
-    message_on_bus = false;
-
     cout << "System Start!" << endl;
 
-    SC_THREAD(Update_Bus);
+    //SC_THREAD(Update_Bus);
       //sensitive << clk.pos(); ?????
   }
 
   // need a thread to track data on bus
-  void Update_Bus(){
-    while(true){
-      message_on_bus = false;
-      wait(CLK_PERIOD,SC_NS);
-      if(msg_to_bus_og_fc.read()->base_ID != 999){
-        msg_in_bus.write(msg_to_bus_og_fc.read());
-        wait(CLK_PERIOD*100,SC_NS);
-        message_on_bus = true;
-      }else if(msg_to_bus_og_lg.read()->base_ID != 999){
-        msg_in_bus.write(msg_to_bus_og_lg.read());
-        wait(CLK_PERIOD*100,SC_NS);
-        message_on_bus = true;
-      }else if(msg_to_bus_og_sensor.read()->base_ID != 999){
-        msg_in_bus.write(msg_to_bus_og_sensor.read());
-        wait(CLK_PERIOD*100,SC_NS);
-        message_on_bus = true;
-      }
-
-      if(message_on_bus){
-        while(true){
-          //wait for ack
-          if(msg_to_bus_ack_fc.read()->ACK){
-            msg_in_bus.write(msg_to_bus_ack_fc.read());
-            break;
-          }else if(msg_to_bus_ack_lg.read()->ACK){
-            msg_in_bus.write(msg_to_bus_ack_lg.read());
-            break;
-          }else if(msg_to_bus_ack_sensor.read()->ACK){
-            msg_in_bus.write(msg_to_bus_ack_sensor.read());
-            break;
-          }
-          wait(CLK_PERIOD,SC_NS);
-        }
-      }
-    }
-  }
 
 };
 
