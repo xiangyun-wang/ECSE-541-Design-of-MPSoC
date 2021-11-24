@@ -17,7 +17,7 @@ public:
 };
 
 
-// -------------- oscillator ---------------------------------------
+// -------------- oscillator (finished) ---------------------------------------
 
 class Oscillator : public sc_module
 {
@@ -79,8 +79,11 @@ struct Message
   }
 };
 
-bool cmpmsg(struct Message msg1, struct Message msg2){    // ------------------------------ need to implement----------------
-  return true;
+bool cmpmsg(struct Message *msg1, struct *Message msg2){    // ------------------------------ need to implement (finished)----------------
+  if(msg1->base_ID == msg2->base_ID && msg1->data == msg2->data && msg1->CRC == msg2->CRC && msg1->ACK == msg2->ACK){
+    return true
+  }
+  return false;
 }
 // -------------- end of message struct -------------------------
 
@@ -114,7 +117,6 @@ class Bus : public sc_module
 public:
   sc_in<sc_logic> clk;
   sc_in<Message> msg_in;
-
   sc_out<Message> msg_out;
 
   SC_HAS_PROCESS(Bus);
@@ -192,6 +194,8 @@ public:
 
   CAN_ctrl(sc_module_name name) : sc_module(name)
   {
+    msg_to_bus_og.write(new Message(999, 0, 0, false));
+    msg_to_bus_ack.write(new Message(999, 0, 0, false));
     SC_THREAD(ctrl_receive);
       sensitive << clk.pos();
   }
@@ -201,25 +205,27 @@ public:
   void WriteMessage(){
     while(true){
       wait(CLK_PERIOD, SC_NS);
-      // encode (recalculate each time, to avoid outdate data)--------- need to implement
-      CRC[15] = {};
-      ACK[1] = {1};
+      // encode (recalculate each time, to avoid outdate data)--------- need to implement (dont want to implement, wont cause error)
       // read id and data from input signals
-      struct Message msg = new Message(unsigned int id, unsigned int data, unsigned int CRC, unsigned int ACK);
+      struct Message msg = new Message(id_from_proc.read(), data_from_proc.read(), 0, false);
       // bus does arbitration upon receiving the message
       msg_to_bus_og.write(msg);
       // check if msg on bus it myself
+      wait(CLK_PERIOD*100,SC_NS);
     	if(cmpmsg(msg_from_bus.read(),msg)){
     		while(true){
     			wait(CLK_PERIOD,SC_NS);
           // check if the message written to bus is acked
-    			if(msg_from_bus.read().ACK) return;
+    			if(msg_from_bus.read().ACK) {
+            msg_to_bus_og.write(new Message(999, 0, 0, false));
+            return;
+          }
     		}
     	}
     	else{
         // if loses arbition, wait for the other message on bus to transmit
         // time to transmit the entire CAN message
-    		wait(CLK_PERIOD*100,SC_NS);
+    		//wait(CLK_PERIOD*100,SC_NS);
     	}
     }
   }
@@ -233,11 +239,15 @@ public:
       // decode the data and write to LRU
       data_to_proc.write(msg_from_bus.read().data);
       id_to_proc.write(msg_from_bus.read().base_ID);
-      // ack the received message
-      struct Message message_read = new Message();
-      memcpy(&message_read,&(msg_from_bus.read()),sizeof(struct Message));// need to check
-      message_read.ack = true;
-      msg_to_bus_ack.write(message);
+      if(msg_from_bus.read().base_ID != 999){
+        // ack the received message
+        struct Message message_read = new Message();
+        memcpy(&message_read,&(msg_from_bus.read()),sizeof(struct Message));// need to check
+        message_read.ack = true;
+        msg_to_bus_ack.write(message);
+      }else{
+        msg_to_bus_ack.write(new Message(999,0,0,false));
+      }
     }
   }
 };
@@ -292,7 +302,7 @@ class Landing_gear_processor : public sc_module
 {
 public:
   // need to map the port in top
-  sc_port<ctrl_interface> ctrl_port_fc;=
+  sc_port<ctrl_interface> ctrl_port_lg;
 
   sc_in<sc_logic> clk;
   sc_in<unsigned int> id_from_ctrl;
@@ -325,6 +335,7 @@ public:
           id_to_ctrl.wirte(landing_gear_id);
           data_to_ctrl.write(9999);
       		ctrl_port_lg -> WriteMessage();
+          sc_stop();
       	}
       }
     }
@@ -334,7 +345,7 @@ public:
 class Sensor_processor : public sc_module
 {
 public:
-  sc_port<ctrl_interface> ctrl_port_fc;
+  sc_port<ctrl_interface> ctrl_port_sensor;
 
   sc_in<sc_logic> clk;
   sc_in<unsigned int> id_from_ctrl;
@@ -386,109 +397,202 @@ class System : public sc_module
 public:
   Oscillator *oscillator;
   Bus *bus;
-  Flight_computer *fc_inst;
-  Landing_gear *lg_inst;
-  Sensor *sensor_inst;
+  Flight_computer *fc_proc;
+  CAN_ctrl *fc_ctrl;
+  Landing_gear *lg_proc;
+  CAN_ctrl *lg_ctrl;
+  Sensor *sensor_proc;
+  CAN_ctrl *sensor_ctrl;
 
+// clock signal
   sc_signal<sc_logic> clk;
-  sc_signal<struct Message> fc_message;
-  sc_signal<struct Message> lg_message;
-  sc_signal<struct Message> sensor_message;
 
-  sc_signal<struct Message> win_message;
-  sc_signal<struct Message> data_on_bus;
+// signal for bus module
+  sc_signal<Message> msg_in_bus;  // this signal needs to be determined in this module
+  sc_signal<Message> msg_out_bus;
 
+// signal for flight computer
+  //sc_signal<sc_logic> clk;
+  sc_signal<unsigned int> id_from_ctrl_fc;
+  sc_signal<unsigned int> data_from_ctrl_fc;
+  sc_signal<unsigned int> id_to_ctrl_fc;
+  sc_signal<unsigned int> data_to_ctrl_fc;
+
+// signal for landing gear
+  //sc_signal<sc_logic> clk;
+  sc_signal<unsigned int> id_from_ctrl_lg;
+  sc_signal<unsigned int> data_from_ctrl_lg;
+  sc_signal<unsigned int> id_to_ctrl_lg;
+  sc_signal<unsigned int> data_to_ctrl_lg;
+
+// signal for sensor
+  //sc_signal<sc_logic> clk;
+  sc_signal<unsigned int> id_from_ctrl_sensor;
+  sc_signal<unsigned int> data_from_ctrl_sensor;
+  sc_signal<unsigned int> id_to_ctrl_sensor;
+  sc_signal<unsigned int> data_to_ctrl_sensor;
+
+// signal for flight computer can controller
+  //sc_in<sc_logic> clk;
+  //sc_in<struct Message> msg_from_bus; ===== the same as msg_out_bus
+  //sc_in<unsigned int> data_from_proc;
+  //sc_in<unsigned int> id_from_proc;
+  sc_out<struct Message> msg_to_bus_ack_fc;
+  sc_out<struct Message> msg_to_bus_og_fc;
+  //sc_out<unsigned int> id_to_proc;
+  //sc_out<unsigned int> data_to_proc;
+
+// signal for landing gear can controller
+  //sc_in<sc_logic> clk;
+  //sc_in<struct Message> msg_from_bus; ===== the same as msg_out_bus
+  //sc_in<unsigned int> data_from_proc;
+  //sc_in<unsigned int> id_from_proc;
+  sc_out<struct Message> msg_to_bus_ack_lg;
+  sc_out<struct Message> msg_to_bus_og_lg;
+  //sc_out<unsigned int> id_to_proc;
+  //sc_out<unsigned int> data_to_proc;
+
+// signal for sensor can controller
+  //sc_in<sc_logic> clk;
+  //sc_in<struct Message> msg_from_bus; ===== the same as msg_out_bus
+  //sc_in<unsigned int> data_from_proc;
+  //sc_in<unsigned int> id_from_proc;
+  sc_out<struct Message> msg_to_bus_ack_sensor;
+  sc_out<struct Message> msg_to_bus_og_sensor;
+  //sc_out<unsigned int> id_to_proc;
+  //sc_out<unsigned int> data_to_proc;
+
+
+  bool message_on_bus;
 
   System(sc_module_name name, char *mem_init_file) : sc_module(name)
   {
+
     oscillator = new Oscillator("OSC1");
     bus = new Bus("bus");
-    fc_inst = new Flight_computer("fc1");
-    lg_inst = new Landing_gear("lg1");
-    sensor_inst = new Sensor("alt sensor");
+    fc_proc = new Flight_computer("fc1");
+    fc_ctrl = new CAN_ctrl("fc_CAN");
+    lg_proc = new Landing_gear("lg1");
+    lg_ctrl = new CAN_ctrl("lg_CAN");
+    sensor_proc = new Sensor("alt sensor");
+    sensor_ctrl = new CAN_ctrl("sensor_CAN");
 
-    fc_inst -> ctrl_port_fc(*ctrl_inst)
+    // port map (3)
+    fc_proc -> ctrl_port_fc(*fc_ctrl);
+    lg_proc -> ctrl_port_lg(*lg_ctrl);
+    sensor_proc -> ctrl_port_sensor(*sensor_ctrl);
+
+    // clk mapping (8)
     oscillator->clk(clk);
+    bus->clk(clk);
+    fc_proc->clk(clk);
+    fc_ctrl->clk(clk);
+    lg_proc->clk(clk);
+    lg_ctrl->clk(clk);
+    sensor_proc->clk(clk);
+    sensor_ctrl->clk(clk);
+
+    // bus signal mapping (2)
+    bus->msg_in(msg_in_bus);
+    bus->msg_out(msg_out_bus);
+
+    // flight computer processor mapping (4)
+    cd_proc->id_from_ctrl(id_from_ctrl_fc);
+    cd_proc->data_from_ctrl(data_from_ctrl_fc);
+    cd_proc->id_to_ctrl(id_to_ctrl_fc);
+    cd_proc->data_to_ctrl(data_to_ctrl_fc);
+
+    // landing gear processor mapping (4)
+    lg_proc->id_from_ctrl(id_from_ctrl_lg);
+    lg_proc->data_from_ctrl(data_from_ctrl_lg);
+    lg_proc->id_to_ctrl(id_to_ctrl_lg);
+    lg_proc->data_to_ctrl(data_to_ctrl_lg);
+
+    // sensor processor mapping (4)
+    sensor_proc->id_from_ctrl(id_from_ctrl_sensor);
+    sensor_proc->data_from_ctrl(data_from_ctrl_sensor);
+    sensor_proc->id_to_ctrl(id_to_ctrl_sensor);
+    sensor_proc->data_to_ctrl(data_to_ctrl_sensor);
+
+    // flight computer CAN controller
+    fc_ctrl->msg_from_bus(msg_out_bus);
+    fc_ctrl->data_from_proc(data_to_ctrl_fc);
+    fc_ctrl->id_from_proc(id_to_ctrl_fc);
+    fc_ctrl->id_to_proc(id_from_ctrl_fc);
+    fc_ctrl->data_to_proc(data_from_ctrl_fc);
+    fc_ctrl->msg_to_bus_ack(msg_to_bus_ack_fc);   // important
+    fc_ctrl->msg_to_bus_og(msg_to_bus_og_fc);     // important
+
+    // landing gear CAN controller
+    lg_ctrl->msg_from_bus(msg_out_bus);
+    lg_ctrl->data_from_proc(data_to_ctrl_lg);
+    lg_ctrl->id_from_proc(id_to_ctrl_lg);
+    lg_ctrl->id_to_proc(id_from_ctrl_lg);
+    lg_ctrl->data_to_proc(data_from_ctrl_lg);
+    lg_ctrl->msg_to_bus_ack(msg_to_bus_ack_lg);   // important
+    lg_ctrl->msg_to_bus_og(msg_to_bus_og_lg);     // important
+
+    // flight computer CAN controller
+    sensor_ctrl->msg_from_bus(msg_out_bus);
+    sensor_ctrl->data_from_proc(data_to_ctrl_sensor);
+    sensor_ctrl->id_from_proc(id_to_ctrl_sensor);
+    sensor_ctrl->id_to_proc(id_from_ctrl_sensor);
+    sensor_ctrl->data_to_proc(data_from_ctrl_sensor);
+    sensor_ctrl->msg_to_bus_ack(msg_to_bus_ack_sensor);   // important
+    sensor_ctrl->msg_to_bus_og(msg_to_bus_og_sensor);     // important
+
+    message_on_bus = false;
+
     cout << "System Start!" << endl;
 
-
+    SC_THREAD(Update_Bus);
+      sensitive << clk.pos();
   }
+
+  // need a thread to track data on bus
+  void Update_Bus(){
+    while(true){
+      message_on_bus = false;
+      wait(CLK_PERIOD,SC_NS);
+      if(msg_to_bus_og_fc.read().base_ID != 999){
+        msg_in_bus.write(msg_to_bus_og_fc.read());
+        wait(CLK_PERIOD*100,SC_NS);
+        message_on_bus = true;
+      }else if(msg_to_bus_og_lg.read().base_ID != 999){
+        msg_in_bus.write(msg_to_bus_og_lg.read());
+        wait(CLK_PERIOD*100,SC_NS);
+        message_on_bus = true;
+      }else if(msg_to_bus_og_sensor.read().base_ID != 999){
+        msg_in_bus.write(msg_to_bus_og_sensor.read());
+        wait(CLK_PERIOD*100,SC_NS);
+        message_on_bus = true;
+      }
+
+      if(message_on_bus){
+        while(true){
+          //wait for ack
+          if(msg_to_bus_ack_fc.read().ACK){
+            msg_in_bus.write(msg_to_bus_ack_fc.read());
+            break;
+          }else if(msg_to_bus_ack_lg.read().ACK){
+            msg_in_bus.write(msg_to_bus_ack_lg.read());
+            break;
+          }else if(msg_to_bus_ack_sensor.read().ACK){
+            msg_in_bus.write(msg_to_bus_ack_sensor.read());
+            break;
+          }
+          wait(CLK_PERIOD,SC_NS);
+        }
+      }
+    }
+  }
+
 };
 
 int sc_main(int argc, char *argv[])
 {
 
-  if (argc != 2 && argc != 5 && argc != 6 && argc != 7)
-  {
-    cerr << "Usage: " << argv[0] << " <filename> [[[addrC addrA addrB] size] loops]" << endl;
-    return 0;
-  }
-
-  if (argc > 2)
-  {
-    MatrixC_Addr = stoi(argv[2]);
-    MatrixA_Addr = stoi(argv[3]);
-    MatrixB_Addr = stoi(argv[4]);
-    if (argc > 5)
-    {
-      matrix_size = stoi(argv[5]);
-      if (argc > 6)
-      {
-        loops = stoi(argv[6]);
-      }
-    }
-  }
-
-  cache_size = matrix_size * matrix_size;
-  unsigned int golden_answer[cache_size];
-
-  System test("test", argv[1]);
-
   sc_start();
-
-  for (int i = 0; i < matrix_size; i++)
-  {
-    for (int j = 0; j < matrix_size; j++)
-    {
-      golden_answer[i * matrix_size + j] = 0;
-      for (int k = 0; k < matrix_size; k++)
-      {
-        golden_answer[i * matrix_size + j] += memory[i * matrix_size + k + MatrixA_Addr] * memory[k * matrix_size + j + MatrixB_Addr];
-      }
-    }
-  }
-  cout << "Golden Answer: " << endl;
-
-  int counter = 0;
-
-  for (int i = 0; i < cache_size; i++)
-  {
-    cout << golden_answer[i] << " ";
-    counter++;
-    if (counter == matrix_size)
-    {
-      cout << endl;
-      counter = 0;
-    }
-  }
-  cout << endl;
-
-  counter = 0;
-  cout << "Actual Answer: " << endl;
-  for (int i = 0; i < matrix_size; i++)
-  {
-    for (int j = 0; j < matrix_size; j++)
-    {
-      cout << memory[i * matrix_size + j + MatrixC_Addr] << " ";
-      counter++;
-      if (counter == matrix_size)
-      {
-        cout << endl;
-        counter = 0;
-      }
-    }
-  }
-  cout << endl;
 
   cout << "Time Consumed: " << setprecision(8) << sc_time_stamp().to_seconds() * 1e9 << "(ns)" << endl;
   cout << "Time Consumed: " << setprecision(8) << sc_time_stamp().to_seconds() * 1e9 / CLK_PERIOD << "(cc)" << endl;
