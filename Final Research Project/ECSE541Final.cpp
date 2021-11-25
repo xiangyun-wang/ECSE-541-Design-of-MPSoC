@@ -198,13 +198,13 @@ public:
 
 
 
-  struct Message* dummy; //= new Message(999,0,0,false);
+  //struct Message* dummy; //= new Message(999,0,0,false);
 
   SC_HAS_PROCESS(CAN_ctrl);
 
   CAN_ctrl(sc_module_name name) : sc_module(name)
   {
-    dummy = new Message(999,0,0,false);
+    //dummy = new Message(999,0,0,false);
 
 
     SC_THREAD(ctrl_receive);
@@ -214,27 +214,19 @@ public:
   // CAN controller encode and transmit message to bus
   //void WriteMessage(unsigned int id, unsigned int data){
   void WriteMessage(){
+    struct Message* msg = new Message();
     while(true){
       //cout<<"Write Message is called"<<endl;
       wait(CLK_PERIOD, SC_NS);
       // encode (recalculate each time, to avoid outdate data)--------- need to implement (dont want to implement, wont cause error)
       // read id and data from input signals
-      //cout<<"before creating new message"<<endl;
       int data = data_from_proc.read();
       int id = id_from_proc.read();
       //cout<< "data is: " << data <<endl;
-      struct Message* msg = new Message();
+      msg->ACK=false;
       msg->data = data;
       msg->base_ID=id;
-      if(id == 0){
-        cout<<"sensitive data detected"<<endl;
-        //sc_stop();
-      }
-      //cout<<"after creating new message"<<endl;
-      // bus does arbitration upon receiving the message
-      //cout<<"message data before transmit: "<< msg->base_ID <<endl;
       msg_to_bus_og.write(msg);
-      //cout<<"message data after transmit: "<< msg->data <<endl;
       // check if msg on bus it myself
       wait(CLK_PERIOD*100,SC_NS);
       //cout<<"waited 100 CC"<<endl;
@@ -243,7 +235,7 @@ public:
     		while(true){
     			wait(CLK_PERIOD,SC_NS);
           // check if the message written to bus is acked
-          cout<<"checking for ack"<<endl;
+
     			if(msg_from_bus.read()->ACK) {
             msg_to_bus_og.write(NULL);
             return;
@@ -263,24 +255,40 @@ public:
   {
     //msg_to_bus_ack.write(dummy);
     //msg_to_bus_og.write(dummy);
+    //struct Message* message_read = new Message(msg_from_bus.read()->base_ID,msg_from_bus.read()->data,0,true);
+    unsigned int data, id;
+    unsigned int my_id = id_from_proc.read();
+    struct Message* message_read = new Message();
     while (true)
     {
-
       wait(CLK_PERIOD,SC_NS);
       //msg_to_bus_og.write(dummy);
       // decode the data and write to LRU
       //cout<<"receiving message"<<endl;
       if(msg_from_bus.read() != NULL){
-        data_to_proc.write(msg_from_bus.read()->data);
-        id_to_proc.write(msg_from_bus.read()->base_ID);
+        my_id = id_from_proc.read();
+        data = msg_from_bus.read()->data;
+        id = msg_from_bus.read()->base_ID;
+        data_to_proc.write(data);
+        id_to_proc.write(id);
+        //if(data==9999&&id==0){
+          //cout<<"WriteMessage: message from flight computer is detected"<<endl;
+          //cout<<"My ID: "<<my_id<<endl;
+        //}
+
         //cout<<"receiving message end"<<endl;
-        if(msg_from_bus.read()->base_ID != 999&&msg_from_bus.read()->base_ID !=id_from_proc.read()&&!msg_from_bus.read()->ACK){
+        if(id != my_id){//&&!msg_from_bus.read()->ACK
           // ack the received message
-          struct Message* message_read = new Message();//(msg_from_bus.read()->base_ID,msg_from_bus.read()->data,0,msg_from_bus.read()->ACK);
+          //cout << "Receiver: before memcpy"<< endl;
           memcpy(message_read,msg_from_bus.read(),sizeof(struct Message));// need to check
-          //msg_from_bus.read()->ACK=true;
-          message_read->ACK = true;
+          //cout << "Receiver: after memcpy"<< endl;
+          msg_from_bus.read()->ACK=true;
+          //message_read->ACK = true;
           msg_to_bus_ack.write(message_read);
+          //if(data==9999&&id==0){
+            //cout<<"WriteMessage: message from flight computer is acked"<<endl;
+          //}
+
         }else{
           msg_to_bus_ack.write(NULL);
         }
@@ -318,17 +326,18 @@ public:
 
   void control(){
     bool lg_deploy_req = false;
-    id_to_ctrl.write(flight_comp_id);
+
   	while(true){
+      id_to_ctrl.write(0);
       wait(CLK_PERIOD,SC_NS);
       // check if the data comes from sensor
       //cout << "Flight controller -  id received from others: " << id_from_ctrl.read() << endl;
   		if (id_from_ctrl.read()==sensor_id){
           // check if the data reached
-          cout<<"data received from sensor"<<endl;
-          cout << "data is: " << data_from_ctrl.read()<<endl;
+          //cout<<"data received from sensor"<<endl;
+          //cout << "data is: " << data_from_ctrl.read()<<endl;
       		if (data_from_ctrl.read() <= 500 && !lg_deploy_req){
-            cout<<"altitude target reached"<<endl;
+            cout<<"Flight Computer: altitude target reached"<<endl;
             //sc_stop();
             lg_deploy_req=true;
 
@@ -340,8 +349,8 @@ public:
     	}
     	else if(id_from_ctrl.read() == landing_gear_id){
     		if(data_from_ctrl.read() == 9999){
-    			cout << "landing gear deployed successfully" << endl;
-          sc_stop();
+    			cout << "Flight Computer: landing gear deployed successfully" << endl;
+          //sc_stop();
     		}
     	}
   	}
@@ -378,20 +387,21 @@ public:
 
   void deployment()
   {
-    id_to_ctrl.write(landing_gear_id);
+
     while (true)
     {
     // landing code = 10
+    id_to_ctrl.write(1);
     wait(CLK_PERIOD, SC_NS);
       if (id_from_ctrl.read()==flight_comp_id){
         //cout << "landing gear message received from flight computer!" << endl;
         //cout << "received message is: "<< data_from_ctrl.read() << endl;
       	if (data_from_ctrl.read() == 9999){
-      		cout << "landing gear deploying!" << endl;
-      		wait(CLK_PERIOD * 100, SC_NS);
-
+      		cout << "Landing Gear: landing gear deploying!" << endl;
+      		wait(CLK_PERIOD * 10000, SC_NS);
+          //cout<<"test test"<<endl;
           data_to_ctrl.write(9999);
-          cout<<"test test"<<endl;
+          //cout<<"test test"<<endl;
       		ctrl_port_lg -> WriteMessage();
 
           //sc_stop();
@@ -433,15 +443,16 @@ public:
   // remember that transmit data takes 100 clock cycles!
   void update_data()
   {
-    id_to_ctrl.write(sensor_id);
+    //id_to_ctrl.write(sensor_id);
     for (int i = 1000; i > 0; i--)
     {
-
+      id_to_ctrl.write(2);
       data_to_ctrl.write(i);
       wait(CLK_PERIOD * 1000, SC_NS);
       //ctrl_port_sr -> WriteMessage(sensor_id,i);
       //cout << "sensor data read: " << i << endl;
     }
+    sc_stop();
   }
   void send_data()
   {
@@ -479,19 +490,19 @@ public:
     while(true){
       message_on_bus = false;
       wait(CLK_PERIOD,SC_NS);
-      if(msg_to_bus_og_fc.read()!=NULL && msg_to_bus_og_fc.read()->base_ID != 999){
+      if(msg_to_bus_og_fc.read()!=NULL){
         msg_to_bus.write(msg_to_bus_og_fc.read());
-        cout<<"message from fc"<<endl;
+        cout<<"Ruler: message from fc is on the bus, message is: "<<msg_to_bus_og_fc.read()->data<<endl;
         wait(CLK_PERIOD*100,SC_NS);
         message_on_bus = true;
-      }else if(msg_to_bus_og_lg.read()!=NULL && msg_to_bus_og_lg.read()->base_ID != 999){
+      }else if(msg_to_bus_og_lg.read()!=NULL){
         msg_to_bus.write(msg_to_bus_og_lg.read());
-        cout<<"message from lg"<<endl;
+        cout<<"Ruler: message from lg is on the bus, message is: "<<msg_to_bus_og_lg.read()->data<<endl;
         wait(CLK_PERIOD*100,SC_NS);
         message_on_bus = true;
-      }else if(msg_to_bus_og_sensor.read()!=NULL&&msg_to_bus_og_sensor.read()->base_ID != 999){
+      }else if(msg_to_bus_og_sensor.read()!=NULL){
         msg_to_bus.write(msg_to_bus_og_sensor.read());
-        cout<<"message from sensor"<<endl;
+        cout<<"Ruler: message from sensor is on the bus, message is: "<<msg_to_bus_og_sensor.read()->data<<endl;
         wait(CLK_PERIOD*100,SC_NS);
         message_on_bus = true;
       }
@@ -499,23 +510,30 @@ public:
       if(message_on_bus){
         while(true){
           //wait for ack
-          if(msg_to_bus_ack_fc.read()->ACK){
+          wait(CLK_PERIOD,SC_NS);
+
+
+          cout<<"Ruler: checking for ack"<<endl;
+          if(msg_to_bus_ack_fc.read()!=NULL&&msg_to_bus_ack_fc.read()->ACK){
             msg_to_bus.write(msg_to_bus_ack_fc.read());
-            cout<<"ack from flight computer"<<endl;
-            cout<<"data is from: " << msg_to_bus_ack_lg.read()->base_ID <<endl;
-            break;
-          }else if(msg_to_bus_ack_lg.read()->ACK){
-            msg_to_bus.write(msg_to_bus_ack_lg.read());
-            cout<<"ack from landing gear, acked data is: " << msg_to_bus_ack_lg.read()->data <<endl;
-            cout<<"data is from: " << msg_to_bus_ack_lg.read()->base_ID <<endl;
-            break;
-          }else if(msg_to_bus_ack_sensor.read()->ACK){
-            msg_to_bus.write(msg_to_bus_ack_sensor.read());
-            cout<<"ack from sensor"<<endl;
-            cout<<"data is from: " << msg_to_bus_ack_lg.read()->base_ID <<endl;
+            cout<<"Ruler: ack from flight computer"<<endl;
+            cout<<"Ruler: data is from: " << msg_to_bus_ack_fc.read()->base_ID << " acked data is: " << msg_to_bus_ack_fc.read()->data<<endl;
             break;
           }
-          wait(CLK_PERIOD,SC_NS);
+
+          if(msg_to_bus_ack_lg.read()!=NULL&&msg_to_bus_ack_lg.read()->ACK){
+            msg_to_bus.write(msg_to_bus_ack_lg.read());
+            cout<<"Ruler: ack from landing gear" <<endl;
+            cout<<"Ruler: data is from: " << msg_to_bus_ack_lg.read()->base_ID << " acked data is: " << msg_to_bus_ack_lg.read()->data <<endl;
+            break;
+          }
+
+          if(msg_to_bus_ack_sensor.read()!=NULL&&msg_to_bus_ack_sensor.read()->ACK){
+            msg_to_bus.write(msg_to_bus_ack_sensor.read());
+            cout<<"Ruler: ack from sensor"<<endl;
+            cout<<"Ruler: data is from: " << msg_to_bus_ack_sensor.read()->base_ID << " acked data is: " << msg_to_bus_ack_sensor.read()->data<<endl;
+            break;
+          }
         }
       }
     }
