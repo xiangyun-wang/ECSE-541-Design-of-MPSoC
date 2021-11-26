@@ -511,25 +511,25 @@ public:
         msg_to_bus.write(msg_to_bus_og_fc.read());
         cout<<"Ruler: message from fc is on the bus, message is: "<<msg_to_bus_og_fc.read()->data<<endl;
         wait(CLK_PERIOD*100,SC_NS);
-        data = msg_to_bus_og_fc.read()->data;
-        base_ID = msg_to_bus_og_fc.read()->base_ID;
-        time_stamp = sc_time_stamp().to_seconds() * 1e9;
+        //data = msg_to_bus_og_fc.read()->data;
+        //base_ID = msg_to_bus_og_fc.read()->base_ID;
+        //time_stamp = sc_time_stamp().to_seconds() * 1e9;
         message_on_bus = true;
       }else if(msg_to_bus_og_lg.read()!=NULL){
         msg_to_bus.write(msg_to_bus_og_lg.read());
         cout<<"Ruler: message from lg is on the bus, message is: "<<msg_to_bus_og_lg.read()->data<<endl;
         wait(CLK_PERIOD*100,SC_NS);
-        data = msg_to_bus_og_lg.read()->data;
-        base_ID = msg_to_bus_og_lg.read()->base_ID;
-        time_stamp = sc_time_stamp().to_seconds() * 1e9;
+        //data = msg_to_bus_og_lg.read()->data;
+        //base_ID = msg_to_bus_og_lg.read()->base_ID;
+        //time_stamp = sc_time_stamp().to_seconds() * 1e9;
         message_on_bus = true;
       }else if(msg_to_bus_og_sensor.read()!=NULL){
         msg_to_bus.write(msg_to_bus_og_sensor.read());
         cout<<"Ruler: message from sensor is on the bus, message is: "<<msg_to_bus_og_sensor.read()->data<<endl;
         wait(CLK_PERIOD*100,SC_NS);
-        data = msg_to_bus_og_sensor.read()->data;
-        base_ID = msg_to_bus_og_sensor.read()->base_ID;
-        time_stamp = sc_time_stamp().to_seconds() * 1e9;
+        //data = msg_to_bus_og_sensor.read()->data;
+        //base_ID = msg_to_bus_og_sensor.read()->base_ID;
+        //time_stamp = sc_time_stamp().to_seconds() * 1e9;
         message_on_bus = true;
       }
 
