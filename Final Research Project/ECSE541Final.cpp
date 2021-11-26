@@ -349,7 +349,7 @@ public:
             //int a = 9999;
             data_to_ctrl.write(9999);
         		ctrl_port_fc -> WriteMessage();
-            cout << "test from flight computer"<<endl;
+            //cout << "test from flight computer"<<endl;
       		}
           wait(CLK_PERIOD*99,SC_NS);
     	}
@@ -481,8 +481,8 @@ public:
   sc_in<struct Message*> msg_to_bus_og_sensor;
   sc_out<struct Message*> msg_to_bus;
 
-  sc_out<struct Log*> log_to_mem;
-  sc_out<sc_logic> write_en;
+  //sc_out<struct Log*> log_to_mem;
+  //sc_out<sc_logic> write_en;
   //sc_out<unsigned int> address;
 
   bool message_on_bus;
@@ -537,16 +537,16 @@ public:
         while(true){
           //wait for ack
           wait(CLK_PERIOD,SC_NS);
-          if(!log_sent){
-            write_en.write(SC_LOGIC_1);
-            cout<<"Ruler: logging"<<endl;
-            struct Log *bus_log = new Log(data,base_ID,time_stamp);
-            cout<<"Ruler: logging"<<endl;
-            log_to_mem.write(bus_log);
-            cout<<"Ruler: logging"<<endl;
-            log_sent = true;
-            cout<<"Ruler: logging"<<endl;
-          }
+          // if(!log_sent){
+          //   write_en.write(SC_LOGIC_1);
+          //   cout<<"Ruler: logging"<<endl;
+          //   struct Log *bus_log = new Log(data,base_ID,time_stamp);
+          //   cout<<"Ruler: logging"<<endl;
+          //   log_to_mem.write(bus_log);
+          //   cout<<"Ruler: logging"<<endl;
+          //   log_sent = true;
+          //   cout<<"Ruler: logging"<<endl;
+          // }
           cout<<"Ruler: checking for ack"<<endl;
           if(msg_to_bus_ack_fc.read()!=NULL&&msg_to_bus_ack_fc.read()->ACK){
             msg_to_bus.write(msg_to_bus_ack_fc.read());
@@ -674,7 +674,7 @@ public:
     fc_ctrl = new CAN_ctrl("fc_CAN");
     sensor_ctrl = new CAN_ctrl("sensor_CAN");
 
-    log_mem = new Memory("log_memory");
+    //log_mem = new Memory("log_memory");
 
 
     // port map (3)
@@ -706,8 +706,8 @@ public:
     bus_ruler->msg_to_bus_ack_sensor(msg_to_bus_ack_sensor);
     bus_ruler->msg_to_bus_og_sensor(msg_to_bus_og_sensor);
     bus_ruler->msg_to_bus(msg_in_bus);
-    bus_ruler->write_en(write_en);
-    bus_ruler->log_to_mem(log_in);
+    //bus_ruler->write_en(write_en);
+    //bus_ruler->log_to_mem(log_in);
 
     // flight computer processor mapping (4)
     fc_proc->id_from_ctrl(id_from_ctrl_fc);
@@ -755,11 +755,11 @@ public:
     sensor_ctrl->msg_to_bus_og(msg_to_bus_og_sensor);     // important
 
     // log mem
-    log_mem->log_in(log_in);
-    log_mem->log_out(log_out);
-    log_mem->read_en(read_en);
-    log_mem->write_en(write_en);
-    log_mem->addr(addr);
+    //log_mem->log_in(log_in);
+    //log_mem->log_out(log_out);
+    //log_mem->read_en(read_en);
+    //log_mem->write_en(write_en);
+    //log_mem->addr(addr);
 
     cout << "System Start!" << endl;
 
