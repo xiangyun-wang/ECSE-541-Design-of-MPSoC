@@ -153,7 +153,7 @@ public:
   sc_in<struct Log*> log_in;
   sc_out<struct Log*> log_out;
 
-  struct Log mem[2048];
+  struct Log* mem[2048];
 
   SC_HAS_PROCESS(Memory);
 
