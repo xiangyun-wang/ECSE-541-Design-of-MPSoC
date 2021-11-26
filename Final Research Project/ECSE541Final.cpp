@@ -174,8 +174,9 @@ public:
         log_out.write(mem[addr.read()]);
       }
       else if(write_en.read()==SC_LOGIC_1){//write
-        mem[addr.read()] = log_in.read();
+        mem[write_address] = log_in.read();
         write_address++;
+        cout<<"Memory: data logged! Data = "<<mem[write_address-1]->data<<" ID: "<<mem[write_address-1]->id<<" Time: "<<mem[write_address-1]->time_stamp<<endl;
         cout<<"Memory: next address is "<<write_address<<endl;
       }
   }
@@ -544,12 +545,12 @@ public:
           wait(CLK_PERIOD,SC_NS);
           if(!log_sent){
             write_en.write(SC_LOGIC_1);
-            cout<<"Ruler: logging "<<msg_buffer.read()->data<<endl;
+            //cout<<"Ruler: logging "<<msg_buffer.read()->data<<endl;
             struct Log *bus_log = new Log();
             bus_log->data = msg_buffer.read()->data;
             bus_log->id = msg_buffer.read()->base_ID;
             bus_log->time_stamp = sc_time_stamp().to_seconds() * 1e9;
-            cout<<"Ruler: log data: "<< bus_log->data << " ID: " << bus_log->id << " Time: " << bus_log->time_stamp <<endl;
+            //cout<<"Ruler: log data: "<< bus_log->data << " ID: " << bus_log->id << " Time: " << bus_log->time_stamp <<endl;
             log_to_mem.write(bus_log);
             //cout<<"Ruler: logging"<<endl;
             log_sent = true;
