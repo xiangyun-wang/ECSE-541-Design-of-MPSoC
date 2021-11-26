@@ -163,13 +163,13 @@ public:
   Memory(sc_module_name name) : sc_module(name)
   {
     write_address = 0;
-    SC_METHOD(Memory_Access);
-      sensitive << read_en <<write_en;
+    SC_THREAD(Memory_Access);
+      sensitive << clk;
   }
 
   void Memory_Access()
   {
-    //wait(CLK_PERIOD,SC_NS);
+    wait(CLK_PERIOD,SC_NS);
       if (read_en.read() == SC_LOGIC_1){//read
         log_out.write(mem[addr.read()]);
       }
