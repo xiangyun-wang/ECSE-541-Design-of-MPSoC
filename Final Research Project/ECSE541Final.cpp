@@ -163,8 +163,8 @@ public:
   Memory(sc_module_name name) : sc_module(name)
   {
     write_address = 0;
-    SC_THREAD(Memory_Access);
-      sensitive << clk;
+    SC_METHOD(Memory_Access);
+      sensitive << write_en.pos();
   }
 
   void Memory_Access()
