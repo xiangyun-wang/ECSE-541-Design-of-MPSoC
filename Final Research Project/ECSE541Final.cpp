@@ -403,9 +403,10 @@ public:
       	if (data_from_ctrl.read() == 9999){
       		cout << "Landing Gear: landing gear deploying!" << endl;
       		wait(CLK_PERIOD * 10000, SC_NS);
+          cout<<"test test"<<endl;
           //cout<<"test test"<<endl;
           data_to_ctrl.write(9999);
-          cout<<"test test"<<endl;
+
       		ctrl_port_lg -> WriteMessage();
 
           //sc_stop();
