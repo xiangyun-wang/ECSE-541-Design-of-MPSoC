@@ -504,7 +504,7 @@ public:
       wait(CLK_PERIOD,SC_NS);
       message_on_bus = false;
       log_sent = false;
-      read_en.write(SC_LOGIC_0);
+      write_en.write(SC_LOGIC_0);
       if(msg_to_bus_og_fc.read()!=NULL){
         msg_to_bus.write(msg_to_bus_og_fc.read());
         cout<<"Ruler: message from fc is on the bus, message is: "<<msg_to_bus_og_fc.read()->data<<endl;
