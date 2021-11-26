@@ -169,7 +169,7 @@ public:
 
   void Memory_Access()
   {
-    wait(CLK_PERIOD,SC_NS);
+    //wait(CLK_PERIOD,SC_NS);
       if (read_en.read() == SC_LOGIC_1){//read
         log_out.write(mem[addr.read()]);
       }
