@@ -537,8 +537,11 @@ public:
           wait(CLK_PERIOD,SC_NS);
           if(!log_sent){
             write_en.write(SC_LOGIC_1);
+            cout<<"Ruler: logging"<<endl;
             struct Log *bus_log = new Log(data,base_ID,time_stamp);
+            cout<<"Ruler: logging"<<endl;
             log_to_mem.write(bus_log);
+            cout<<"Ruler: logging"<<endl;
             log_sent = true;
             cout<<"Ruler: logging"<<endl;
           }
