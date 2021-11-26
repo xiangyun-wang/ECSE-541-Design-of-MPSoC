@@ -322,7 +322,11 @@ public:
     sensor_id = 2;
     SC_THREAD(control);
       sensitive << clk;
+    SC_THREAD(log_control);
+      sensitive << clk;
   }
+
+
 
   void control(){
     bool lg_deploy_req = false;
@@ -354,7 +358,6 @@ public:
     		}
     	}
   	}
-
   }
 };
 
@@ -485,6 +488,17 @@ public:
     SC_THREAD(Update_Bus);
       sensitive << clk.pos();
   }
+
+  // void log_control(){
+  //   unsignint prev_time;
+  //   struct Log *previous_log = NULL;
+  //   struct Log *current_log = new Log();
+  //   while(true){
+  //     if(){
+  //       current_log
+  //     }
+  //   }
+  // }
 
   void Update_Bus(){
     while(true){
