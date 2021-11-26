@@ -176,6 +176,7 @@ public:
       else if(write_en.read()==SC_LOGIC_1){//write
         mem[addr.read()] = log_in.read();
         write_address++;
+        cout<<"Memory: next address is "<<write_address<<endl;
       }
   }
 };
