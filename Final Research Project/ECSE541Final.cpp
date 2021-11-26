@@ -156,7 +156,7 @@ public:
   sc_out<struct Log*> log_out;
 
   //struct Log* mem[2048];
-  unsigned int address;
+  unsigned int write_address;
 
   SC_HAS_PROCESS(Memory);
 
