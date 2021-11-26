@@ -170,8 +170,6 @@ public:
   void Memory_Access()
   {
     //wait(CLK_PERIOD,SC_NS);
-    while (true)
-    {
       if (read_en.read() == SC_LOGIC_1){//read
         log_out.write(mem[addr.read()]);
       }
@@ -179,7 +177,6 @@ public:
         mem[addr.read()] = log_in.read();
         write_address++;
       }
-    }
   }
 };
 
