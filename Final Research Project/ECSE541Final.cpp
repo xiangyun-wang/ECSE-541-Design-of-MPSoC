@@ -540,6 +540,7 @@ public:
             struct Log *bus_log = new Log(data,base_ID,time_stamp);
             log_to_mem.write(bus_log);
             log_sent = true;
+            cout<<"Ruler: logging"<<endl;
           }
           cout<<"Ruler: checking for ack"<<endl;
           if(msg_to_bus_ack_fc.read()!=NULL&&msg_to_bus_ack_fc.read()->ACK){
