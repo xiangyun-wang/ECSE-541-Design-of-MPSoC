@@ -544,7 +544,7 @@ public:
           wait(CLK_PERIOD,SC_NS);
           if(!log_sent){
             //write_en.write(SC_LOGIC_1);
-            cout<<"Ruler: logging"<<endl;
+            cout<<"Ruler: logging "<<msg_buffer.read()->data<<endl;
             struct Log *bus_log = new Log(msg_buffer.read()->data,msg_buffer.read()->base_ID,sc_time_stamp().to_seconds() * 1e9);
             cout<<"Ruler: log data: "<< bus_log->data << " ID: " << bus_log->id << " Time: " << bus_log->time_stamp <<endl;
             // log_to_mem.write(bus_log);
