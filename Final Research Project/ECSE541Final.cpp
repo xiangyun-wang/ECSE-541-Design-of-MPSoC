@@ -587,7 +587,7 @@ public:
   CAN_ctrl *lg_ctrl;
   Sensor_processor *sensor_proc;
   CAN_ctrl *sensor_ctrl;
-  Memory *log_mem;
+  //Memory *log_mem;
 
 // clock signal
   sc_signal<sc_logic> clk;
@@ -692,7 +692,7 @@ public:
     lg_ctrl->clk(clk);
     sensor_proc->clk(clk);
     sensor_ctrl->clk(clk);
-    log_mem->clk(clk);
+    //log_mem->clk(clk);
 
     // bus signal mapping (2)
     bus->msg_in(msg_in_bus);
