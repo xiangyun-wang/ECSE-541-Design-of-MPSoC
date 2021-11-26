@@ -322,8 +322,6 @@ public:
     sensor_id = 2;
     SC_THREAD(control);
       sensitive << clk;
-    SC_THREAD(log_control);
-      sensitive << clk;
   }
 
 
