@@ -349,6 +349,7 @@ public:
             //int a = 9999;
             data_to_ctrl.write(9999);
         		ctrl_port_fc -> WriteMessage();
+            cout << "test from flight computer"<<endl;
       		}
           wait(CLK_PERIOD*99,SC_NS);
     	}
