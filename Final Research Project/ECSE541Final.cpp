@@ -480,7 +480,7 @@ public:
   sc_out<struct Message*> msg_to_bus;
 
   sc_out<struct Log*> log_to_mem;
-  sc_out<sc_logic> read_en;
+  sc_out<sc_logic> write_en;
   //sc_out<unsigned int> address;
 
   bool message_on_bus;
@@ -536,7 +536,7 @@ public:
           //wait for ack
           wait(CLK_PERIOD,SC_NS);
           if(!log_sent){
-            read_en.write(SC_LOGIC_1);
+            write_en.write(SC_LOGIC_1);
             struct Log *bus_log = new Log(data,base_ID,time_stamp);
             log_to_mem.write(bus_log);
             log_sent = true;
@@ -701,7 +701,7 @@ public:
     bus_ruler->msg_to_bus_ack_sensor(msg_to_bus_ack_sensor);
     bus_ruler->msg_to_bus_og_sensor(msg_to_bus_og_sensor);
     bus_ruler->msg_to_bus(msg_in_bus);
-    bus_ruler->read_en(read_en);
+    bus_ruler->write_en(write_en);
     bus_ruler->log_to_mem(log_in);
 
     // flight computer processor mapping (4)
