@@ -164,7 +164,7 @@ public:
   {
     write_address = 0;
     SC_METHOD(Memory_Access);
-      sensitive << read_en.pos() <<write_en.pos();
+      sensitive << read_en <<write_en;
   }
 
   void Memory_Access()
