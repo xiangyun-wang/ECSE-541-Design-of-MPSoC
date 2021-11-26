@@ -75,6 +75,8 @@ struct Log{
 
 };
 
+struct Log* mem[2048];
+
 class ctrl_interface : virtual public sc_interface
 {
 public:
@@ -153,19 +155,21 @@ public:
   sc_in<struct Log*> log_in;
   sc_out<struct Log*> log_out;
 
-  struct Log* mem[2048];
+  //struct Log* mem[2048];
+  unsigned int address;
 
   SC_HAS_PROCESS(Memory);
 
   Memory(sc_module_name name) : sc_module(name)
   {
-    SC_THREAD(Memory_Access);
-      sensitive << clk.pos();
+    write_address = 0;
+    SC_METHOD(Memory_Access);
+      sensitive << read_en.pos() <<write_en.pos();
   }
 
   void Memory_Access()
   {
-    wait(CLK_PERIOD,SC_NS);
+    //wait(CLK_PERIOD,SC_NS);
     while (true)
     {
       if (read_en.read() == SC_LOGIC_1){//read
@@ -173,6 +177,7 @@ public:
       }
       else if(write_en.read()==SC_LOGIC_1){//write
         mem[addr.read()] = log_in.read();
+        write_address++;
       }
     }
   }
@@ -476,46 +481,55 @@ public:
   sc_in<struct Message*> msg_to_bus_og_sensor;
   sc_out<struct Message*> msg_to_bus;
 
+  sc_out<struct Log*> log_to_mem;
+  sc_out<sc_logic> read_en;
+  //sc_out<unsigned int> address;
+
   bool message_on_bus;
+  bool log_sent;
+  unsigned int data, base_ID, time_stamp;
 
   SC_HAS_PROCESS(Bus_Ruler);
 
   Bus_Ruler(sc_module_name name) : sc_module(name)
   {
     message_on_bus = false;
+    log_sent = false;
     SC_THREAD(Update_Bus);
       sensitive << clk.pos();
   }
 
-  // void log_control(){
-  //   unsignint prev_time;
-  //   struct Log *previous_log = NULL;
-  //   struct Log *current_log = new Log();
-  //   while(true){
-  //     if(){
-  //       current_log
-  //     }
-  //   }
-  // }
 
   void Update_Bus(){
+
     while(true){
-      message_on_bus = false;
       wait(CLK_PERIOD,SC_NS);
+      message_on_bus = false;
+      log_sent = false;
+      read_en.write(SC_LOGIC_0);
       if(msg_to_bus_og_fc.read()!=NULL){
         msg_to_bus.write(msg_to_bus_og_fc.read());
         cout<<"Ruler: message from fc is on the bus, message is: "<<msg_to_bus_og_fc.read()->data<<endl;
         wait(CLK_PERIOD*100,SC_NS);
+        data = msg_to_bus_og_fc.read()->data;
+        base_ID = msg_to_bus_og_fc.read()->base_ID;
+        time_stamp = sc_time_stamp().to_seconds() * 1e9;
         message_on_bus = true;
       }else if(msg_to_bus_og_lg.read()!=NULL){
         msg_to_bus.write(msg_to_bus_og_lg.read());
         cout<<"Ruler: message from lg is on the bus, message is: "<<msg_to_bus_og_lg.read()->data<<endl;
         wait(CLK_PERIOD*100,SC_NS);
+        data = msg_to_bus_og_lg.read()->data;
+        base_ID = msg_to_bus_og_lg.read()->base_ID;
+        time_stamp = sc_time_stamp().to_seconds() * 1e9;
         message_on_bus = true;
       }else if(msg_to_bus_og_sensor.read()!=NULL){
         msg_to_bus.write(msg_to_bus_og_sensor.read());
         cout<<"Ruler: message from sensor is on the bus, message is: "<<msg_to_bus_og_sensor.read()->data<<endl;
         wait(CLK_PERIOD*100,SC_NS);
+        data = msg_to_bus_og_sensor.read()->data;
+        base_ID = msg_to_bus_og_sensor.read()->base_ID;
+        time_stamp = sc_time_stamp().to_seconds() * 1e9;
         message_on_bus = true;
       }
 
@@ -523,8 +537,12 @@ public:
         while(true){
           //wait for ack
           wait(CLK_PERIOD,SC_NS);
-
-
+          if(!log_sent){
+            read_en.write(SC_LOGIC_1);
+            struct Log *bus_log = new Log(data,base_ID,time_stamp);
+            log_to_mem.write(bus_log);
+            log_sent = true;
+          }
           cout<<"Ruler: checking for ack"<<endl;
           if(msg_to_bus_ack_fc.read()!=NULL&&msg_to_bus_ack_fc.read()->ACK){
             msg_to_bus.write(msg_to_bus_ack_fc.read());
@@ -565,6 +583,7 @@ public:
   CAN_ctrl *lg_ctrl;
   Sensor_processor *sensor_proc;
   CAN_ctrl *sensor_ctrl;
+  Memory *log_mem;
 
 // clock signal
   sc_signal<sc_logic> clk;
@@ -624,6 +643,13 @@ public:
   //sc_out<unsigned int> id_to_proc;
   //sc_out<unsigned int> data_to_proc;
 
+// signal for log memory
+  //sc_signal<sc_logic> clk;
+  sc_signal<unsigned int> addr;
+  sc_signal<sc_logic> read_en;
+  sc_signal<sc_logic> write_en;
+  sc_signal<struct Log*> log_in;
+  sc_signal<struct Log*> log_out;
 
   bool message_on_bus;
 
@@ -661,6 +687,7 @@ public:
     lg_ctrl->clk(clk);
     sensor_proc->clk(clk);
     sensor_ctrl->clk(clk);
+    log_mem->clk(clk);
 
     // bus signal mapping (2)
     bus->msg_in(msg_in_bus);
@@ -674,6 +701,8 @@ public:
     bus_ruler->msg_to_bus_ack_sensor(msg_to_bus_ack_sensor);
     bus_ruler->msg_to_bus_og_sensor(msg_to_bus_og_sensor);
     bus_ruler->msg_to_bus(msg_in_bus);
+    bus_ruler->read_en(read_en);
+    bus_ruler->log_to_mem(log_in);
 
     // flight computer processor mapping (4)
     fc_proc->id_from_ctrl(id_from_ctrl_fc);
@@ -719,6 +748,13 @@ public:
     sensor_ctrl->data_to_proc(data_from_ctrl_sensor);
     sensor_ctrl->msg_to_bus_ack(msg_to_bus_ack_sensor);   // important
     sensor_ctrl->msg_to_bus_og(msg_to_bus_og_sensor);     // important
+
+    // log mem
+    log_mem->log_in(log_in);
+    log_mem->log_out(log_out);
+    log_mem->read_en(read_en);
+    log_mem->write_en(write_en);
+    log_mem->addr(addr);
 
     cout << "System Start!" << endl;
 
