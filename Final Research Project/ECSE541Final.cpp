@@ -549,7 +549,7 @@ public:
             cout<<"Ruler: log data: "<< bus_log->data << " ID: " << bus_log->id << " Time: " << bus_log->time_stamp <<endl;
             // log_to_mem.write(bus_log);
             // cout<<"Ruler: logging"<<endl;
-            // log_sent = true;
+            log_sent = true;
             // cout<<"Ruler: logging"<<endl;
           }
           cout<<"Ruler: checking for ack"<<endl;
