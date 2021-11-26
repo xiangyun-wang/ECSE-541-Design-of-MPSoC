@@ -143,40 +143,40 @@ public:
 
 
 
-// class Memory : public sc_module
-// {
-// public:
-//   sc_in<sc_logic> clk;
-//   sc_in<int> addr;
-//   sc_in<sc_logic> read_flag;
-//   sc_in<sc_logic> write_flag;
-//   sc_in<Log> log_in;
-//
-//   sc_out<Log> log_out;
-//
-//   struct Log mem[2048];
-//
-//   SC_HAS_PROCESS(Memory);
-//
-//   Memory(sc_module_name name) : sc_module(name)
-//   {
-//     SC_THREAD(Memory_Access);
-//       sensitive << clk.pos();
-//   }
-//
-//   void Memory_Access()
-//   {
-//     while (true)
-//     {
-//       if (read_flag.read() == SC_LOGIC_1 && write_flag.read()==SC_LOGIC_0){//read
-//         data_out.write(mem[addr.read()]);
-//       }
-//       else if(read_flag.read()==SC_LOGIC_0&&write_flag.read()==SC_LOGIC_1){//write
-//         mem[addr.read()] = data_in.read();
-//       }
-//     }
-//   }
-// };
+class Memory : public sc_module
+{
+public:
+  sc_in<sc_logic> clk;
+  sc_in<int> addr;
+  sc_in<sc_logic> read_en;
+  sc_in<sc_logic> write_en;
+  sc_in<Log> log_in;
+  sc_out<Log> log_out;
+
+  struct Log mem[2048];
+
+  SC_HAS_PROCESS(Memory);
+
+  Memory(sc_module_name name) : sc_module(name)
+  {
+    SC_THREAD(Memory_Access);
+      sensitive << clk.pos();
+  }
+
+  void Memory_Access()
+  {
+    wait(CLK_PERIOD,SC_NS);
+    while (true)
+    {
+      if (read_enable.read() == SC_LOGIC_1){//read
+        data_out.write(mem[addr.read()]);
+      }
+      else if(write_flag.read()==SC_LOGIC_1){//write
+        mem[addr.read()] = data_in.read();
+      }
+    }
+  }
+};
 
 
 
