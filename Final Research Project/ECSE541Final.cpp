@@ -147,11 +147,11 @@ class Memory : public sc_module
 {
 public:
   sc_in<sc_logic> clk;
-  sc_in<int> addr;
+  sc_in<unsigned int> addr;
   sc_in<sc_logic> read_en;
   sc_in<sc_logic> write_en;
-  sc_in<Log> log_in;
-  sc_out<Log> log_out;
+  sc_in<struct Log*> log_in;
+  sc_out<struct Log*> log_out;
 
   struct Log mem[2048];
 
@@ -168,11 +168,11 @@ public:
     wait(CLK_PERIOD,SC_NS);
     while (true)
     {
-      if (read_enable.read() == SC_LOGIC_1){//read
-        data_out.write(mem[addr.read()]);
+      if (read_en.read() == SC_LOGIC_1){//read
+        log_out.write(mem[addr.read()]);
       }
-      else if(write_flag.read()==SC_LOGIC_1){//write
-        mem[addr.read()] = data_in.read();
+      else if(write_en.read()==SC_LOGIC_1){//write
+        mem[addr.read()] = log_in.read();
       }
     }
   }
