@@ -651,7 +651,6 @@ public:
   sc_signal<struct Log*> log_in;
   sc_signal<struct Log*> log_out;
 
-  bool message_on_bus;
 
   SC_HAS_PROCESS(System);
 
@@ -670,6 +669,8 @@ public:
     lg_ctrl = new CAN_ctrl("lg_CAN");
     fc_ctrl = new CAN_ctrl("fc_CAN");
     sensor_ctrl = new CAN_ctrl("sensor_CAN");
+
+    log_mem = new Memory("log_memory");
 
 
     // port map (3)
