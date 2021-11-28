@@ -169,7 +169,6 @@ public:
 
   void Memory_Access()
   {
-    //wait(CLK_PERIOD,SC_NS);
       if (read_en.read() == SC_LOGIC_1){//read
         log_out.write(mem[addr.read()]);
       }
@@ -189,7 +188,6 @@ class CAN_ctrl : public sc_module, public ctrl_interface
 {
 public:
   sc_out<struct Message*> msg_to_bus_og;
-
   sc_out<struct Message*> msg_to_bus_ack;
   sc_in<sc_logic> clk;
   sc_in<struct Message*> msg_from_bus;
@@ -481,7 +479,6 @@ public:
   sc_in<struct Message*> msg_to_bus_ack_sensor;
   sc_in<struct Message*> msg_to_bus_og_sensor;
   sc_out<struct Message*> msg_to_bus;
-
   sc_out<struct Log*> log_to_mem;
   sc_out<sc_logic> write_en;
   //sc_out<unsigned int> address;
